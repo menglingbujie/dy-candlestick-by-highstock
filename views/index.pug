@@ -1,0 +1,15 @@
+extends layout
+block header
+  link(href="/css/chart.css" type="text/css" rel="stylesheet")
+block content
+  #root(v-cloak)
+    vchart
+  script(src="/libs/jquery.min.js")
+  script(src="/libs/highstock.js")
+  script(src="/libs/lodash.min.js")
+  script(src="/libs/moment.min.js")
+  script(src="/libs/vue.min.js")
+  script(src="/libs/vue-resource.min.js")
+  script(src="/libs/vuex.js")
+  script(src="/libs/socket.io.js")
+  script(src="/chart.js")
