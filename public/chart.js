@@ -53,8 +53,8 @@ let VChart = {
         let lastPoint = _.last(this.chartSeries.points);
         this.updateData[0]= d.a;
         this.updateData[3]= d.b;
-        let maxV = _.max([this.oldSellPrice,d.b,this.updateData[1]]);
-        let minV = _.min([this.oldSellPrice,d.b,this.updateData[2]]);
+        let maxV = _.max([this.oldSellPrice,d.b,this.updateData[1]]);// 周期内最高值
+        let minV = _.min([this.oldSellPrice,d.b,this.updateData[2]]);// 周期内最低值
         this.updateData[1]= maxV;
         this.updateData[2]= minV;
         let newData = [d.t*1000,this.oldSellPrice,maxV,minV,d.b];
@@ -70,6 +70,7 @@ let VChart = {
       });
       socket.on("quotes:init",(data)=>{
         let da = JSON.parse(data);
+        console.log("==socket init=",da);
         let initSocketData = _.filter(da,{s:"EURUSD"});
         let lastData = _.last(initSocketData);
         this.currentTime = lastData.t;// 当前时间
@@ -82,6 +83,7 @@ let VChart = {
 
       })
       socket.on("quotes:update",(data)=>{
+        console.log("==socket update=",data);
         let d = JSON.parse(data);
         if(d.s!="EURUSD")return;
         this.updatePoint(d);
@@ -108,8 +110,8 @@ let VChart = {
           events:{
             load: function(){
               // 图表加载完后应该追加一点为当前周期变化点
-              let newPoint = _.concat(that.currentTime*1000,that.updateData);
-              newPoint[1]=that.oldSellPrice; // 新蜡烛图的open价为上一个蜡烛图的close价
+              let newPoint = _.concat(that.currentTime*1000,[that.oldSellPrice,that.oldSellPrice,that.updateData[2],that.updateData[3]]);
+              // newPoint[1]=that.oldSellPrice; // 新蜡烛图的open价为上一个蜡烛图的close价
               console.log("===new point=",newPoint);
               this.series[0].addPoint(newPoint);
             }
@@ -248,7 +250,8 @@ let VChart = {
     },
     fetchChartHistoryData(){
       // m1为6小时数据
-      this.$http.get('http://dev.io.ubankfx.com/chart?from='+(this.currentTime-21600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1').then((resp)=>{
+      //this.$http.get('http://dev.io.ubankfx.com/chart?from='+(this.currentTime-21600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1').then((resp)=>{
+      this.$http.get('http://dev.io.ubankfx.com/chart?from='+(this.currentTime-3600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1').then((resp)=>{
         // console.log("====",resp.body.data)
         this.historyData = _.map(resp.body.data,(v,k)=>{
           // time, open, high, low, close
