@@ -1,8 +1,16 @@
 let VChart = {
   data(){
     return {
-      oldSellPrice:"",
-      updateData:[0,0,0,0], // 实时数据，统计用
+      updateData:[],
+      timeRange:60,
+      timer:null,
+      historyExtremes:[],
+      currentPrice:0,
+      isUpdating:false,
+      maxRange:0,
+      minRange:0,
+      rangeData:[[0,0,0,0]], // 周期内数据
+      openPrice:"",
       currentTime:0,
       chart:null,
       historyData:[],
@@ -15,8 +23,8 @@ let VChart = {
   template:`
     <div class="chart">
       <h1>Hello Chart</h1>
-      <p>Min {{minSell}}</p>
-      <p>Max {{maxSell}}</p>
+      <p>Max:{{historyExtremes[0]}}</p>
+      <p>Min:{{historyExtremes[1]}}</p>
       <div id="chartId"></div>
     </div>
   `,
@@ -28,40 +36,48 @@ let VChart = {
       return this.chart&&this.chart.series[0];
     },
     points(){
-      return this.chart.series[0].points;
-    },
-    maxSell(){
-      if(!this.chart){return 0;}
-      return this.chart.series[0].dataMax;
-    },
-    minSell(){
-      if(!this.chart){return 0;}
-      return this.chart.series[0].dataMin;
-    },
+      return this.chartSeries.points;
+    }
   },
   methods:{
-    updatePoint(d){
-      // console.log(d.t+"==="+this.currentTime+"=="+(d.t-this.currentTime))
-      if(d.t-this.currentTime>=60){
-        let newData = [d.t*1000,d.a,this.updateData[1],this.updateData[2],d.b];
+    updateTimer(){
+      this.currentTime++;
+      let countTime = (this.timeRange-moment.unix(this.currentTime).seconds())
+      console.log(this.currentTime+"===update timer=="+moment.unix(this.currentTime).seconds()+"=="+countTime);
+      if(!this.isUpdating){return;}
+      if(countTime==this.timeRange){
+        let newData = [this.updateData.t*1000,this.openPrice,this.maxRange,this.minRange,this.updateData.b];// 只关注最后一次的收盘价
         console.log("==add point==",newData)
         this.chartSeries.addPoint(newData,true,true);
-        this.currentTime = d.t; // 更新当前时间
-        this.updateData = [d.a,d.a,d.b,d.b];
-        this.oldSellPrice = d.b;
-      }else{
-        let lastPoint = _.last(this.chartSeries.points);
-        this.updateData[0]= d.a;
-        this.updateData[3]= d.b;
-        let maxV = _.max([this.oldSellPrice,d.b,this.updateData[1]]);// 周期内最高值
-        let minV = _.min([this.oldSellPrice,d.b,this.updateData[2]]);// 周期内最低值
-        this.updateData[1]= maxV;
-        this.updateData[2]= minV;
-        let newData = [d.t*1000,this.oldSellPrice,maxV,minV,d.b];
-        console.log("===updated====",newData);
-        lastPoint.update(newData,true,true);
-        this.chartSeries.redraw();
+        this.maxRange = this.updateData.b;
+        this.minRange = this.updateData.b;
+        this.isUpdating = false;
+        this.currentPrice = this.updateData.b;
+        this.currentTime=this.updateData.t;
       }
+    },
+    updatePoint(d){
+      if(!this.chartSeries){
+        return;
+      }
+      if(!this.isUpdating){
+        this.openPrice = d.b;
+      }
+      this.updateData=d;
+      this.isUpdating = true;
+      this.maxRange = _.max([d.b,this.maxRange]);
+      this.minRange = _.min([d.b,this.minRange]);
+      // this.rangeData.push([d.a,d.b]); // 收集时段内极限数据
+      let lastPoint = _.last(this.chartSeries.points);
+      let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];
+      // console.log(d,"===updated====",newData);
+      lastPoint.update(newData,true,true);
+      this.currentPrice = d.b;
+      let yAxis = this.chart.yAxis[0];
+      yAxis.options.plotLines[0].value = _.max([this.maxRange,this.historyExtremes[0]]);
+      yAxis.options.plotLines[1].value = _.min([this.minRange,this.historyExtremes[1]]);
+      yAxis.options.plotLines[2].value=this.currentPrice;
+      yAxis.update(true);
     },
     initSocket(){
       const socket = io("//dev.io.ubankfx.com");
@@ -70,20 +86,22 @@ let VChart = {
       });
       socket.on("quotes:init",(data)=>{
         let da = JSON.parse(data);
-        console.log("==socket init=",da);
+        // console.log("==socket init=",da);
         let initSocketData = _.filter(da,{s:"EURUSD"});
         let lastData = _.last(initSocketData);
         this.currentTime = lastData.t;// 当前时间
-        this.updateData = [lastData.a,lastData.a,lastData.b,lastData.b];// 初始化ohlc数据
-        this.oldSellPrice = lastData.b;//初始化最近一次的卖出价
+        // this.rangeData = [[lastData.a,lastData.b]];// 初始化ohlc数据
+        this.openPrice = lastData.b;//初始化最近一次的卖出价为新点的开盘价
+        // this.maxRange = lastData.a;
+        this.minRange = lastData.b;
 
-        // console.log(this.currentTime,"====111==",this.updateData);
+        this.currentPrice = lastData.b;
+        // console.log(this.currentTime,"====111==",this.rangeData);
         // 获取到服务器时间后，根据服务器时间初始化历史记录
         this.fetchChartHistoryData();
 
       })
       socket.on("quotes:update",(data)=>{
-        console.log("==socket update=",data);
         let d = JSON.parse(data);
         if(d.s!="EURUSD")return;
         this.updatePoint(d);
@@ -104,16 +122,18 @@ let VChart = {
         height:'100%',
         chart:{
           margin: [30, 30,30, 30],
-    			plotBorderColor: '#3C94C4',
-    			plotBorderWidth: 0.3,
-          backgroundColor:"#000",
           events:{
             load: function(){
+              if(that.timer){
+                clearInterval(that.timer);
+              }
+              that.timer = setInterval(that.updateTimer,1e3)
               // 图表加载完后应该追加一点为当前周期变化点
-              let newPoint = _.concat(that.currentTime*1000,[that.oldSellPrice,that.oldSellPrice,that.updateData[2],that.updateData[3]]);
-              // newPoint[1]=that.oldSellPrice; // 新蜡烛图的open价为上一个蜡烛图的close价
-              console.log("===new point=",newPoint);
-              this.series[0].addPoint(newPoint);
+              if(moment.unix(that.currentTime).seconds()==60){
+                let newPoint = _.concat(that.currentTime*1000,[that.openPrice,that.openPrice,that.openPrice,that.openPrice]);
+                // console.log("===new point=",newPoint);
+                this.series[0].addPoint(newPoint);
+              }
             }
           }
         },
@@ -121,9 +141,9 @@ let VChart = {
           //修改蜡烛颜色
   	    	candlestick: {
             upLineColor:"green",
-            upColor:"none",
-            lineColor:"green",
-            color:"white",
+            upColor:"green",
+            lineColor:"red",
+            color:"red",
             dataGrouping:{
               enabled:false,
             },
@@ -164,61 +184,51 @@ let VChart = {
           enabled: true,
         },
         xAxis: {
-          // type: 'datetime',
-          // minRange:5000,
           minPadding:0,
           maxPadding:0,
-          // dateTimeLabelFormats: {
-          //   second: '%H:%M:%S',
-          //   minute: '%m-%d %H:%M',
-          //   hour: '%m-%d %H:%M',
-          //   day: '%m-%d %Y',
-          //   week: '%m-%d %Y',
-          //   month: '%Y-%m',
-          //   year: '%Y'
+          crosshair:true,
+          // labels:{
+          //   formatter:function(){
+          //     console.log("=="+moment.unix(this.value).toISOString());
+          //     return moment(moment.unix(this.value).toISOString()).format("HH:mm");
+          //   }
           // }
         },
         yAxis: [ {
-            height: '80%',
-            showLastLabel:true,
-            showFirstLabel:false,
-            minorTickInte3rval:"auto",
-            gridLineDashStyle:"longdash",
-            gridLineColor: '#666',
-            gridLineWidth: 1,
-            // offset:40,
-            // plotLines: [ {
-            //   value: this.minRate,
-            //   color: 'green',
-            //   dashStyle: "shortdash",
-            //   width: 2,
-            // }, {
-            //   value: this.maxRate,
-            //   color: 'red',
-            //   dashStyle: "shortdash",
-            //   width: 2,
-            // } ],
+          events:{
+            afterSetExtremes:function(){
+
+            }
           },
-          {
-            height:"15%",
-            top:"85%"
-          }
+          height:'100%',
+          showLastLabel:true,
+          showFirstLabel:false,
+          minorTickInte3rval:"auto",
+          gridLineDashStyle:"longdash",
+          gridLineColor: '#666',
+          gridLineWidth: 1,
+          plotLines: [ {
+            value: this.historyExtremes[0],
+            color: 'green',
+            dashStyle: "shortdash",
+            width: 2,
+          }, {
+            value: this.historyExtremes[1],
+            color: 'red',
+            dashStyle: "shortdash",
+            width: 2,
+          },{
+            value: this.currentPrice,
+            color: 'gray',
+            width: 1,
+          } ],
+        },
         ],
         series: [ {
             type: 'candlestick',
-            // type: 'ohlc',
             data: this.historyData,
             dataGrouping:{
               enableds:false,
-              // forced:true,
-              // units:[
-              //   ["minute",[1,5,15,30]],
-              //   ["hour",[1,4]],
-              //   ['day',[1]],
-              //   ['week',[1]],
-              //   ['month',[1]],
-              //   ['year',[1]],
-              // ],
             },
             yAxis:0,
           },
@@ -250,14 +260,19 @@ let VChart = {
     },
     fetchChartHistoryData(){
       // m1为6小时数据
-      //this.$http.get('http://dev.io.ubankfx.com/chart?from='+(this.currentTime-21600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1').then((resp)=>{
-      this.$http.get('http://dev.io.ubankfx.com/chart?from='+(this.currentTime-3600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1').then((resp)=>{
-        // console.log("====",resp.body.data)
+      let url = 'http://dev.io.ubankfx.com/chart?from='+(this.currentTime-3600)+'&to='+this.currentTime+'&symbol=EURUSD&period=M1';
+      this.$http.get(url).then((resp)=>{
         this.historyData = _.map(resp.body.data,(v,k)=>{
           // time, open, high, low, close
           return [v.ot*1000,v.op,v.hp,v.lp,v.cp];
         });
 
+        let historyHigh = [],historyLow=[];
+        _.map(this.historyData,(v,k)=>{
+          historyHigh.push(v[2]);
+          historyLow.push(v[3]);
+        });
+        this.historyExtremes = [_.max(historyHigh),_.min(historyLow)];
         this.initChart();
       });
     }
