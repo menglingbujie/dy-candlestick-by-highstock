@@ -1,22 +1,20 @@
 let VChart = {
   data(){
     return {
+      productName:"EURUSD",
       currentTime:0,
       timeRange:60,
-      historyExtremes:[],
       currentPrice:0,
       maxRange:0,
       minRange:0,
-      rangeData:[[0,0,0,0]], // 周期内数据
       openPrice:"",
       openTime:0,
       chart:null,
       historyData:[],
-      socketData:[],
-      valueData:[],
-      MA5Array:[],
-      MA10Array:[],
-
+      valueData:[], // 交易量数据
+      MA5Array:[],// ma5数据
+      MA10Array:[],// ma10数据
+      page:1, //当前页
       period:"M1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
@@ -27,6 +25,10 @@ let VChart = {
       <ul class="btns_history">
         <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="console.log('click');fetchChartHistory(p)">{{p}}</li>
       </ul>
+      <div class="btn_group">
+        <button class="btn prev" @click.stop="historyPrev">上一页</button>
+        <button class="btn next" @click.stop="historyNext">下一页</button>
+      </div>
       <div id="chartId"></div>
     </div>
   `,
@@ -34,6 +36,28 @@ let VChart = {
     this.initSocket();
   },
   computed:{
+    periodTimes(){
+      // 根据历史数据获得要推迟的时间段
+      return (this.page-1)*this.periodRange;
+    },
+    historyDuring(){
+      // 请求数据所需要的st和et区间
+      return [this.currentTime-this.periodRange-this.periodTimes,this.currentTime-this.periodTimes];
+    },
+    periodRange(){
+      // 获取每个时间段取值范围
+      switch(this.period){
+        case "M1":{return 3600;}break;
+        case "M5":{return 5*3600;}break;
+        case "M15":{return 15*3600;}break;
+        case "M30":{return 30*3600;}break;
+        case "H1":{return 60*3600;}break;
+        case "H4":{return 240*3600;}break;
+        case "D1":{return 24*60*3600;}break;
+        case "W1":{return 7*24*60*3600;}break;
+        case "MN":{return 30*24*60**3600;}break;
+      }
+    },
     chartSeries(){
       return this.chart&&this.chart.series[0];
     },
@@ -42,46 +66,35 @@ let VChart = {
     }
   },
   methods:{
-    historyDuring(period){
-      let ct = this.currentTime;
-      let loadCount=500;
-      let times = [];
-      switch(period){
-        // case "M1":{times=[ct-loadCount-60*1000,ct];}break;
-        // case "M5":{times=[ct-loadCount-5*60*1000,ct];}break;
-        // case "M15":{times=[ct-loadCount-15*60*1000,ct];}break;
-        // case "M30":{times=[ct-loadCount-30*60*1000,ct];}break;
-        // case "H1":{times=[ct-loadCount-60*60*1000,ct];}break;
-        // case "H4":{times=[ct-loadCount-240*60*1000,ct];}break;
-        // case "D1":{times=[ct-loadCount-24*60*60*1000,ct];}break;
-        // case "W1":{times=[ct-loadCount-7*24*60*60*1000,ct];}break;
-        // case "MN":{times=[ct-loadCount-30*24*60*60*1000,ct];}break;
-        case "M1":{times=[ct-loadCount-3600,ct];}break;
-        case "M5":{times=[ct-loadCount-5*3600,ct];}break;
-        case "M15":{times=[ct-loadCount-15*3600,ct];}break;
-        case "M30":{times=[ct-loadCount-30*3600,ct];}break;
-        case "H1":{times=[ct-loadCount-60*3600,ct];}break;
-        case "H4":{times=[ct-loadCount-240*3600,ct];}break;
-        case "D1":{times=[ct-loadCount-24*60*3600,ct];}break;
-        case "W1":{times=[ct-loadCount-7*24*60*3600,ct];}break;
-        case "MN":{times=[ct-loadCount-30*24*60*3600,ct];}break;
+    historyNext(){
+      this.page--;
+      if(this.page<1){
+        this.page=1;
+        return;
       }
-      console.log(times);
-      return times;
+      // 全部往前移动一个周期
+      let st = this.historyDuring[0];
+      let et = this.historyDuring[1];
+      this.fetchChartHistoryData(st,et);
+    },
+    historyPrev(){
+      this.page++;
+      // 全部往前移动一个周期
+      let st = this.historyDuring[0];
+      let et = this.historyDuring[1];
+      this.fetchChartHistoryData(st,et);
     },
     fetchChartHistory(period){
       this.period = period;
-      let times = this.historyDuring(period);
-      console.log("==fetchChartHistory==")
-      this.fetchChartHistoryData(times[0],times[1]);
+      this.fetchChartHistoryData(this.historyDuring[0],this.historyDuring[1]);
     },
     addNewCandleTick(d){
-      console.log(d.t+"===add point=="+this.openTime)
-      // if(d.t<this.openTime){this.fetchChartHistory(this.period);return;}
-      let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
+      console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
+      this.openTime+=this.timeRange;
+      // let newData = [this.openTime*1000,this.openPrice,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
+      let newData = [this.openTime*1000,d.a,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       // console.log(d.t+"===addnew point==",newData+"==="+this.openTime);
       this.chartSeries.addPoint(newData,true,true);
-      this.openTime = d.t; // 不断通过update校对时间
       this.openPrice = d.b;
       this.maxRange = d.b;
       this.minRange = d.b;
@@ -91,7 +104,7 @@ let VChart = {
         return;
       }
       this.currentTime=d.t;
-      // console.log("===update==="+(this.openTime+this.timeRange-d.t))
+      console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
       if(this.openTime+this.timeRange-d.t<1){
         this.addNewCandleTick(d);
         return;
@@ -104,8 +117,6 @@ let VChart = {
       lastPoint.update(newData,true,true);
       this.currentPrice = d.b;
       let yAxis = this.chart.yAxis[0];
-      // yAxis.options.plotLines[1].value = _.max([this.maxRange,this.historyExtremes[0]]);
-      // yAxis.options.plotLines[2].value = _.min([this.minRange,this.historyExtremes[1]]);
       yAxis.options.plotLines[0].value = this.currentPrice;
       yAxis.options.plotLines[0].label.text = this.currentPrice;
       if(this.currentPrice-this.openPrice>0){
@@ -121,39 +132,39 @@ let VChart = {
       yAxis.update(true);
     },
     initSocket(){
-      const socket = io("//io.ubankfx.com");
+      const socket = io("//io.ubankfx.cn");
       socket.on("connect",()=>{
         socket.emit("quotes:subscribe","quotes");
       });
       socket.on("quotes:init",(data)=>{
         let da = JSON.parse(data);
         // console.log("==socket init=",da);
-        let initSocketData = _.filter(da,{s:"EURUSD"});
+        let initSocketData = _.filter(da,{s:this.productName});
         let lastData = _.last(initSocketData);
         this.openTime = lastData.t;// 当前开盘时间
         this.openPrice = lastData.b;//初始化最近一次的卖出价为新点的开盘价
-        this.maxRange = lastData.b;// 初始化最高值
-        this.minRange = lastData.b; // 初始化最低值
 
         this.currentPrice = lastData.b;
         this.currentTime=lastData.t;
-        // console.log(this.openTime,"====111==",this.rangeData);
-        console.log("===sofcket init")
+        this.maxRange = lastData.b;
+        this.minRange = lastData.b;
         // 获取到服务器时间后，根据服务器时间初始化历史记录
         this.fetchChartHistory(this.period);
 
       })
       socket.on("quotes:update",(data)=>{
         let d = JSON.parse(data);
-        if(d.s!="EURUSD")return;
-        this.updatePoint(d);
+        if(d.s!=this.productName)return;
+        if(this.page==1){
+          this.updatePoint(d);
+        }
       });
     },
     initChart(){
       let that = this;
       Highcharts.setOptions( {
         global: {
-          // useUTC: false,
+          useUTC: true,
           // timezone:'Europe/Oslo'
           // getTimezoneOffset:function(timestamp){
           //   var zone = 'Europe/Oslo';
@@ -171,6 +182,8 @@ let VChart = {
       const options = {
         height:'100%',
         chart:{
+          zoomType:"none",
+          pinchType:"none",
           events:{
             load: function(){
             }
@@ -252,8 +265,8 @@ let VChart = {
             }
           },
           dateTimeLabelFormats:{
-            millisecond: '%H:%M:%S',
-          	second: '%M:%S',
+            millisecond: '%H:%M',
+          	second: '%H:%M',
           	minute: '%H:%M',
           	hour: '%H:%M',
           	day: '%e. %b',
@@ -345,23 +358,20 @@ let VChart = {
       this.chart = new Highcharts.stockChart( "chartId", options);
     },
     fetchChartHistoryData(st,et){
-      console.log("=fetchChartHistoryData====")
       // m1为1小时数据
-      // let url = '//io.ubankfx.com/chart?from='+(this.openTime-3600)+'&to='+this.openTime+'&symbol=EURUSD&period=M1';
-      let url = '//io.ubankfx.com/chart?from='+st+'&to='+et+'&symbol=EURUSD&period='+this.period;
+      let url = '//io.ubankfx.cn/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
       this.$http.get(url).then((resp)=>{
-        this.historyData = _.map(resp.body.data,(v,k)=>{
+        let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
+        this.historyData = _.map(_data,(v,k)=>{
           // time, open, high, low, close
           return [v.ot*1000,v.op,v.hp,v.lp,v.cp];
         });
-
-        let historyHigh = [],historyLow=[];
-        _.map(this.historyData,(v,k)=>{
-          historyHigh.push(v[2]);
-          historyLow.push(v[3]);
-        });
-        this.historyExtremes = [_.max(historyHigh),_.min(historyLow)];
-        this.initChart();
+        // 如果有chart对象就update否则就初始化chart表
+        if(!this.chart){
+          this.initChart();
+        }else{
+          this.chartSeries.update({data:this.historyData},true);
+        }
       });
     }
   }
