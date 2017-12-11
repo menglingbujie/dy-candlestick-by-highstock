@@ -6,6 +6,9 @@
 .chart{
 
 }
+.chart>.title{
+  font-size:30px;vertical-align: middle;
+}
 ul,li{list-style:none;}
 .chart>.btns_history,.chart>.btn_group{display:inline-block;}
 .chart>.btns_history{

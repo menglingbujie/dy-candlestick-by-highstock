@@ -1,6 +1,15 @@
+
+// let Highcharts = require("highchart");
+// import Highcharts from "highchart";
 let VChart = {
   data(){
     return {
+      newestRange:[0,0],
+      rangeSelect:0,
+      isUpdating:true, // 图表更新开关
+      inProgress:false,
+      volumnData:[],
+      maset:[5,10,20],
       productName:"EURUSD",
       currentTime:0,
       timeRange:60,
@@ -12,23 +21,17 @@ let VChart = {
       chart:null,
       historyData:[],
       valueData:[], // 交易量数据
-      MA5Array:[],// ma5数据
-      MA10Array:[],// ma10数据
-      page:1, //当前页
+      MA:[],// 移动平均线数据
       period:"M1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
   },
   template:`
     <div class="chart">
-      <h1>Hello Chart</h1>
+      <strong class='title'>{{this.productName}}</strong>
       <ul class="btns_history">
         <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="console.log('click');fetchChartHistory(p)">{{p}}</li>
       </ul>
-      <div class="btn_group">
-        <button class="btn prev" @click.stop="historyPrev">上一页</button>
-        <button class="btn next" @click.stop="historyNext">下一页</button>
-      </div>
       <div id="chartId"></div>
     </div>
   `,
@@ -36,26 +39,19 @@ let VChart = {
     this.initSocket();
   },
   computed:{
-    periodTimes(){
-      // 根据历史数据获得要推迟的时间段
-      return (this.page-1)*this.periodRange;
-    },
-    historyDuring(){
-      // 请求数据所需要的st和et区间
-      return [this.currentTime-this.periodRange-this.periodTimes,this.currentTime-this.periodTimes];
-    },
     periodRange(){
+      let pointSize = 600;
       // 获取每个时间段取值范围
       switch(this.period){
-        case "M1":{return 3600;}break;
-        case "M5":{return 5*3600;}break;
-        case "M15":{return 15*3600;}break;
-        case "M30":{return 30*3600;}break;
-        case "H1":{return 60*3600;}break;
-        case "H4":{return 240*3600;}break;
-        case "D1":{return 24*60*3600;}break;
-        case "W1":{return 7*24*60*3600;}break;
-        case "MN":{return 30*24*60**3600;}break;
+        case "M1":{this.rangeSelect=0;this.timeRange=60;return pointSize*60;}break;
+        case "M5":{this.rangeSelect=1;this.timeRange=5*60;return pointSize*5*60;}break;
+        case "M15":{this.rangeSelect=2;this.timeRange=15*60;return pointSize*15*60;}break;
+        case "M30":{this.rangeSelect=3;this.timeRange=30*60;return pointSize*30*60;}break;
+        case "H1":{this.rangeSelect=4;this.timeRange=60*60;return pointSize*60*60;}break;
+        case "H4":{this.rangeSelect=5;this.timeRange=4*60*60;return pointSize*240*60;}break;
+        case "D1":{this.rangeSelect=6;this.timeRange=24*60*60;return pointSize*24*60*60;}break;
+        case "W1":{this.rangeSelect=7;this.timeRange=7*24*60*60;return pointSize*7*24*60*60;}break;
+        case "MN":{this.rangeSelect=8;this.timeRange=30*24*60*60;return pointSize*30*24*60*60;}break;
       }
     },
     chartSeries(){
@@ -66,35 +62,27 @@ let VChart = {
     }
   },
   methods:{
-    historyNext(){
-      this.page--;
-      if(this.page<1){
-        this.page=1;
-        return;
-      }
-      // 全部往前移动一个周期
-      let st = this.historyDuring[0];
-      let et = this.historyDuring[1];
-      this.fetchChartHistoryData(st,et);
-    },
-    historyPrev(){
-      this.page++;
-      // 全部往前移动一个周期
-      let st = this.historyDuring[0];
-      let et = this.historyDuring[1];
-      this.fetchChartHistoryData(st,et);
+    gotoNewestExtreme(){
+      this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
     },
     fetchChartHistory(period){
       this.period = period;
-      this.fetchChartHistoryData(this.historyDuring[0],this.historyDuring[1]);
+      this.fetchChartHistoryData();
     },
     addNewCandleTick(d){
-      console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
+      // console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
       this.openTime+=this.timeRange;
       // let newData = [this.openTime*1000,this.openPrice,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       let newData = [this.openTime*1000,d.a,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       // console.log(d.t+"===addnew point==",newData+"==="+this.openTime);
-      this.chartSeries.addPoint(newData,true,true);
+      // this.chartSeries.addPoint(newData,true,true);
+      if(this.historyData.length>=1000){
+        this.fetchChartHistoryData();
+      }else{
+        this.historyData.push(newData);
+        this.chartSeries.setData(this.historyData);
+      }
+
       this.openPrice = d.b;
       this.maxRange = d.b;
       this.minRange = d.b;
@@ -103,8 +91,9 @@ let VChart = {
       if(!this.chartSeries){
         return;
       }
+
       this.currentTime=d.t;
-      console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
+      // console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
       if(this.openTime+this.timeRange-d.t<1){
         this.addNewCandleTick(d);
         return;
@@ -114,25 +103,30 @@ let VChart = {
       let lastPoint = _.last(this.chartSeries.points);
       let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];
       // console.log(d,"===updated====",newData);
-      lastPoint.update(newData,true,true);
       this.currentPrice = d.b;
       let yAxis = this.chart.yAxis[0];
       yAxis.options.plotLines[0].value = this.currentPrice;
       yAxis.options.plotLines[0].label.text = this.currentPrice;
-      if(this.currentPrice-this.openPrice>0){
-        yAxis.options.plotLines[0].color="green";
-        // yAxis.options.plotLines[0].label.style.color="green";
-      }else if(this.currentPrice-this.openPrice<0) {
-        yAxis.options.plotLines[0].color="red";
-        // yAxis.options.plotLines[0].label.style.color="red";
-      }else{
-        yAxis.options.plotLines[0].color="gray";
-        // yAxis.options.plotLines[0].label.style.color="black";
-      }
-      yAxis.update(true);
+
+      lastPoint.update(newData,true,false);
+      yAxis.update(yAxis.options,true);
+    },
+    updateChartSeries(){
+      this.chartSeries.setData(this.historyData);
+      this.chart.rangeSelector.clickButton(this.rangeSelect);
+
+      // 每次更新完数据重新计算极限值
+      let extrem = this.chart.xAxis[0].getExtremes();
+      this.newestRange = [extrem.min,extrem.max];
+
+      this.chart.hideLoading();
     },
     initSocket(){
-      const socket = io("//io.ubankfx.cn");
+      // const socket = io("//dev.io.ubankfx.com");
+      const socket = io("//10.0.1.18:8500",{
+        transports:['websocket'],
+        path:'/socket.io/'
+      });
       socket.on("connect",()=>{
         socket.emit("quotes:subscribe","quotes");
       });
@@ -155,8 +149,11 @@ let VChart = {
       socket.on("quotes:update",(data)=>{
         let d = JSON.parse(data);
         if(d.s!=this.productName)return;
-        if(this.page==1){
+
+        if(this.isUpdating){
           this.updatePoint(d);
+        }else{
+          this.gotoNewestExtreme();
         }
       });
     },
@@ -165,48 +162,55 @@ let VChart = {
       Highcharts.setOptions( {
         global: {
           useUTC: true,
-          // timezone:'Europe/Oslo'
-          // getTimezoneOffset:function(timestamp){
-          //   var zone = 'Europe/Oslo';
-          //   zone="EET";
-          //   var timezoneOffset = -moment.tz(timestamp, zone).utcOffset();
-          //   console.log(timezoneOffset);
-          //   return timezoneOffset;
-          // }
         },
         lang: {
-          noData: "No Data"
+          noData: "No Data",
+          shortMonths: ['01', '02', '03', '04', '05', '06',  '07', '08', '09', '10', '11', '12'],
         }
       } );
       // create the chart
       const options = {
         height:'100%',
+        loading:{
+          labelStyle:{
+            fontSize:"20px",
+            color:"#000",
+          },
+          style:{
+            opacity:0.8,
+          }
+        },
         chart:{
-          zoomType:"none",
-          pinchType:"none",
+          zoomType:null,
           events:{
             load: function(){
+              // console.log("===load")
+            },
+            render:function(){
+              // console.log("===render")
             }
           }
         },
         plotOptions:{
           //修改蜡烛颜色
-  	    	candlestick: {
-            upLineColor:"green",
-            upColor:"green",
-            lineColor:"red",
-            color:"red",
+          candlestick: {
+            upLineColor:"#5ac71e",
+            upColor:"#5ac71e",
+            lineColor:"#f23244",
+            color:"#f23244",
+            yAxis:0,
+            pointWidth:6, // 蜡烛宽度
             dataGrouping:{
               enabled:false,
             },
-  	    		maker:{
-  	    			states:{
-  	    				hover:{
-  	    					enabled:false,
-  	    				}
-  	    			}
-  	    		}
-  	    	},
+            maker:{
+              states:{
+                hover:{
+                  enabled:false,
+                }
+              }
+            }
+          },
   	    	//去掉曲线和蜡烛上的hover事件
           series: {
           	states: {
@@ -225,7 +229,15 @@ let VChart = {
           enabled: false,
         },
         navigator: {
-          enabled: false,
+          enabled: true,
+          height:0,
+          outlineWidth:0,
+          handles:{
+            enabled:false, // 选择器隐藏
+          },
+          xAxis:{
+            visible:false,
+          }
         },
         scrollbar:{
           enabled:false,
@@ -234,132 +246,222 @@ let VChart = {
           enabled:false,
         },
         tooltip:{
-          borderWidth:0,
-          shadow:false,
-          pointFormatter:function(){
-            return this.series.name+" O:"+this.open+" H:"+this.high+" L:"+this.low+" C:"+this.close;
-          },
-          positioner: function () {
-            return { x: 0, y: 0 };
-          },
+          shared:true,
+          split:false,
         },
         rangeSelector: {
-          enabled: false,
-          selected: 0,
-          inputEnabled: false,
+          enabled: true,
+          selected:0,
+          inputEnabled:false,
+          labelStyle:{
+            display:"none",
+          },
+          buttonPosition:{
+            x:400,
+            y:0,
+          },
+          buttonTheme:{
+            display:'none',
+          },
+          buttons:[
+            {type:"hour",count:3,text:"3h"},
+            {type:"hour",count:10,text:"10h"},
+            {type:"day",count:1,text:"1d"},
+            {type:"day",count:2,text:"2d"},
+            {type:"week",count:1,text:"1w"},
+            {type:"month",count:1,text:"1m"},
+            {type:"month",count:5,text:"5m"},
+            {type:"year",count:2,text:"2y"},
+            {type:"year",count:8,text:"8y"},
+          ]
         },
         xAxis: {
-          // minPadding:0,
-          // maxPadding:0,
-          // tickLength:0,
-          // ordinal:false,
-          // startOnTick:true,
-          // endOnTick:true,
+          events:{
+            afterSetExtremes:function(e){
+              const DEVIATION=60000; // 2分钟误差，毫秒单位
+              let currMax = _.floor(e.max),currMin = _.floor(e.min),dataMax = e.dataMax,dataMin = e.dataMin;
+              if(currMax==dataMax){
+                that.newestRange = [currMin,currMax]; // 更新最新极限范围
+                //启动更新
+                that.isUpdating = true;
+              }else if(currMin<=dataMin+DEVIATION){// 2分钟误差, 毫秒比对
+                if(that.newestRange[0]&&that.newestRange[1]){
+                  that.isUpdating = false;
+                  console.log("====is need to ajax==");
+                }
+              }else{
+                // 暂停更新
+                that.isUpdating = false;
+              }
+            }
+          },
+          // endOnTick:true, // 这个会影响到拖动，会使endtime点不动进行扩大
           crosshair: {
+            color:"#727A98",
             label: {
               formatter: function (e) {
                 return Highcharts.dateFormat("%Y-%m-%d %H:%M:%S", e);
               },
               enabled: true,
               borderWidth: 1,
-            }
+            },
+            zIndex:10,
           },
           dateTimeLabelFormats:{
-            millisecond: '%H:%M',
-          	second: '%H:%M',
-          	minute: '%H:%M',
-          	hour: '%H:%M',
-          	day: '%e. %b',
-          	week: '%e. %b',
-          	month: '%Y %b \'%y',
-          	year: '%Y'
-          }
+            minute: '%H:%M',
+            hour: '%H:%M',
+            day: '%b-%e',
+            week: '%b-%e-%Y',
+            month: '%Y-%b',
+            year: '%Y-%b'
+          },
         },
         yAxis: [ {
-          height:'100%',
+          height:"80%",
           showLastLabel:true,
           showFirstLabel:false,
-          minorTickInte3rval:"auto",
           gridLineDashStyle:"longdash",
-          gridLineColor: '#666',
           gridLineWidth: 1,
-          offset:40,
+          offset:55,
+          labels:{
+            step: 1,
+            formatter: function(){
+              return this.value;
+            }
+          },
           plotLines: [
             {
               value: this.currentPrice,
               color: 'gray',
               width: 1,
               label:{
+                useHTML:true,
                 align:"right",
-                fontSize:"14px",
-                text:this.currentPrice
+                style:{
+                  backgroundColor:"#000",
+                  color:"#fff",
+                  padding:"0 5px",
+                  fontSize:"12px",
+                },
+                text:this.currentPrice,
+                x:50,
+                y:3,
               },
               zIndex:5,
             }
           ],
 
           crosshair: {
+            color:"#727A98",
             label: {
               enabled: true,
               borderWidth: 1,
             }
           },
           showLastLabel: true, //是否显示最后一个轴标签
+          resize: {
+            enabled: true
+          },
         },
+        {
+          top:"80%",
+          height:"20%",
+        }
         ],
+        tooltip:{
+          shared:true,
+          split:false,
+        },
         series: [ {
             type: 'candlestick',
             data: this.historyData,
+            id:"aapl",
             dataGrouping:{
-              enableds:false,
+              enableds:true,
             },
             yAxis:0,
-            dataLabels:{
-              enabled: true,
-              shadow:true,
-              style:{
-                fontWeight: 'bold'
-              },
-              // verticalAlign:'bottom',
-              formatter:function(){
-                // console.log("===point==",this);
-                if(this.point.high===this.point.series.dataMax){
-                  return '<span style="color: red;">High:' + this.point.high + '</span>';
-                }else if(this.point.low===this.point.series.dataMin) {
-                  return '<span style="color: green;">Low:' + this.point.low + '</span>';
-                }
+            tooltip:{
+              shared:true,
+              split:false,
+              userHTML:true,
+              headerFormat:'',
+              pointFormat:'开盘：<p>{point.open}</p><br>最高：<p>{point.high}</p><br>最低：<p>{point.low}</p><br>收盘：<p>{point.close}</p><br>',
+            },
+          },
+          {
+            type:'sma',
+            linkedTo:"aapl",
+            name:"MA(5)",
+            params:{
+              period:5,
+            }
+          },
+          {
+            type:'sma',
+            linkedTo:"aapl",
+            name:"MA(10)",
+            params:{
+              period:10,
+            }
+          },
+          {
+            type:'sma',
+            linkedTo:"aapl",
+            name:"MA(20)",
+            params:{
+              period:20,
+            }
+          },
+          {
+            type:"bb",
+            topLine:{
+              styles:{
+                lineColor:"pink",
               }
             },
+            bottomLine: {  // 下轨线
+                styles: {
+                    lineColor: 'purple'
+                }
+            },
+            color: '#006cee', //中轨颜色
+            tooltip: {
+                pointFormat: '<span style="color:{point.color}">\u25CF</span>' +
+                '<b> {series.name}</b><br/>' +
+                'UP: {point.top}<br/>' +
+                'MB: {point.middle}<br/>' +
+                'DN: {point.bottom}<br/>'
+            },
+            name: '布林（20,2）',
+            linkedTo: 'aapl'
+          },
+          {
+            yAxis:1,
+            tooltip:{
+              pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
+                'MACD 线：{point.MACD}<br/>' +
+                '信号线：{point.signal}<br/>' +
+                '振荡指标：{point.y}<br/>'
+            },
+            type:"macd",
+            linkedTo:"aapl",
+            params:{
+              shortPeriod:12,
+              longPeriod:26,
+              signalPeriod:9,
+              period:26,
+            }
           }
-          // {
-  	      //   type: 'spline',
-  	      //   name: 'MA5',
-  	      //   data: this.MA5Array,
-  	      //   color:'#8bbc21',
-  	      //   threshold: null,
-  	      //   lineWidth:1,
-  	      //   dataGrouping: {
-    			// 	  enabled: false
-    			//   }
-          // },
-          // {
-  	      //   type: 'spline',
-  	      //   name: 'MA10',
-  	      //   data: this.MA10Array,
-  	      //   color:'#8bbc21',
-  	      //   threshold: null,
-  	      //   lineWidth:1,
-  	      //   dataGrouping: {
-    			// 	  enabled: false
-    			//   }
-          // }
         ]
       }
       this.chart = new Highcharts.stockChart( "chartId", options);
     },
-    fetchChartHistoryData(st,et){
+    fetchChartHistoryData(){
+      let st=this.currentTime-this.periodRange;
+      let et = this.currentTime;
+      this.chart&&this.chart.showLoading("加载中...");
       // m1为1小时数据
-      let url = '//io.ubankfx.cn/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
+      let url = '//dev.io.ubankfx.com/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
       this.$http.get(url).then((resp)=>{
         let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
         this.historyData = _.map(_data,(v,k)=>{
@@ -370,8 +472,10 @@ let VChart = {
         if(!this.chart){
           this.initChart();
         }else{
-          this.chartSeries.update({data:this.historyData},true);
+          this.updateChartSeries();
         }
+      }).finally(()=>{
+        this.chart.hideLoading();
       });
     }
   }
