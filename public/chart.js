@@ -4,6 +4,8 @@
 let VChart = {
   data(){
     return {
+      forceUpdate:false,
+      socket:null,
       isShowMA:true,
       isShowBOLL:true,
       newestRange:[0,0],
@@ -154,6 +156,7 @@ let VChart = {
       // console.log(d.t+"===addnew point==",newData+"==="+this.openTime);
       // this.chartSeries.addPoint(newData,true,true);
       if(this.historyData.length>=1000){
+        this.forceUpdate = true;
         this.fetchChartHistoryData();
       }else{
         this.historyData.push(newData);
@@ -199,15 +202,14 @@ let VChart = {
       this.chart.hideLoading();
     },
     initSocket(){
-      const socket = io("//dev.io.ubankfx.com");
-      // const socket = io("//10.0.1.18:8500",{
-      //   transports:['websocket'],
-      //   path:'/socket.io/'
-      // });
-      socket.on("connect",()=>{
-        socket.emit("quotes:subscribe","quotes");
+      this.socket = io("//dev.io.ubankfx.com",{
+        transports:['websocket'],
+        path:'/socket.io/'
       });
-      socket.on("quotes:init",(data)=>{
+      this.socket.on("connect",()=>{
+        this.socket.emit("quotes:subscribe","quotes");
+      });
+      this.socket.on("quotes:init",(data)=>{
         let da = JSON.parse(data);
         // console.log("==socket init=",da);
         let initSocketData = _.filter(da,{s:this.productName});
@@ -219,11 +221,12 @@ let VChart = {
         this.currentTime=lastData.t;
         this.maxRange = lastData.b;
         this.minRange = lastData.b;
+
         // 获取到服务器时间后，根据服务器时间初始化历史记录
         this.fetchChartHistory(this.period);
-
       })
-      socket.on("quotes:update",(data)=>{
+      this.socket.on("quotes:update",(data)=>{
+        // console.log("==update:"+data);
         let d = JSON.parse(data);
         if(d.s!=this.productName)return;
 
@@ -551,11 +554,16 @@ let VChart = {
           return [v.ot*1000,v.op,v.hp,v.lp,v.cp];
         });
         // 如果有chart对象就update否则就初始化chart表
-        if(!this.chart){
+        if(this.forceUpdate){
           this.initChart();
         }else{
-          this.updateChartSeries();
+          if(!this.chart){
+            this.initChart();
+          }else{
+            this.updateChartSeries();
+          }
         }
+
       }).finally(()=>{
         this.chart.hideLoading();
       });
