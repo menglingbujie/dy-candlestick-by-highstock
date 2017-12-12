@@ -4,6 +4,8 @@
 let VChart = {
   data(){
     return {
+      isShowMA:true,
+      isShowBOLL:true,
       newestRange:[0,0],
       rangeSelect:0,
       isUpdating:true, // 图表更新开关
@@ -11,6 +13,7 @@ let VChart = {
       volumnData:[],
       maset:[5,10,20],
       productName:"EURUSD",
+      // productName:"USDJPY",
       currentTime:0,
       timeRange:60,
       currentPrice:0,
@@ -30,7 +33,15 @@ let VChart = {
     <div class="chart">
       <strong class='title'>{{this.productName}}</strong>
       <ul class="btns_history">
-        <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="console.log('click');fetchChartHistory(p)">{{p}}</li>
+        <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="fetchChartHistory(p)">{{p}}</li>
+      </ul>
+      <ul class="btns_history">
+        <li class="item" @click.stop="showMA">MA</li>
+        <li class="item" @click.stop="showBOLL">BOLL</li>
+      </ul>
+      <ul class="btns_history">
+        <li class="item" @click.stop="showMACD">MACD</li>
+        <li class="item" @click.stop="showRSI">RSI</li>
       </ul>
       <div id="chartId"></div>
     </div>
@@ -55,13 +66,79 @@ let VChart = {
       }
     },
     chartSeries(){
-      return this.chart&&this.chart.series[0];
+      return this.chart&&this.chart.get("aapl");
+    },
+    chartSeriesMA5(){
+      return this.chart&&this.chart.get("ma5");
+    },
+    chartSeriesMA10(){
+      return this.chart&&this.chart.get("ma10");
+    },
+    chartSeriesMA20(){
+      return this.chart&&this.chart.get("ma20");
+    },
+    chartSeriesBOOL(){
+      return this.chart&&this.chart.get("bb");
+    },
+    chartSeriesMACD(){
+      return this.chart&&this.chart.get("macd");
     },
     points(){
       return this.chartSeries.points;
     }
   },
   methods:{
+    showMA(){
+      this.isShowMA = !this.isShowMA;
+      if(this.isShowMA){
+        this.chartSeriesMA5.show();
+        this.chartSeriesMA10.show();
+        this.chartSeriesMA20.show();
+      }else{
+        this.chartSeriesMA5.hide();
+        this.chartSeriesMA10.hide();
+        this.chartSeriesMA20.hide();
+      }
+    },
+    showBOLL(){
+      this.isShowBOLL = !this.isShowBOLL;
+      if(this.isShowBOLL){
+        this.chartSeriesBOOL.show();
+      }else{
+        this.chartSeriesBOOL.hide();
+      }
+    },
+    showMACD(){
+      this.chartSeriesMACD.update({
+        tooltip:{
+          pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
+            'MACD 线：{point.MACD}<br/>' +
+            '信号线：{point.signal}<br/>' +
+            '振荡指标：{point.y}<br/>'
+        },
+        type:"macd",
+        linkedTo:"aapl",
+        params:{
+          shortPeriod:12,
+          longPeriod:26,
+          signalPeriod:9,
+          period:26,
+        }
+      })
+    },
+    showRSI(){
+      this.chartSeriesMACD.update({
+        type: 'rsi',
+        params:{},
+        linkedTo:"aapl",
+        params:{
+          decimals:6,
+        },
+        tooltip:{
+          pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}',
+        }
+      })
+    },
     gotoNewestExtreme(){
       this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
     },
@@ -122,11 +199,11 @@ let VChart = {
       this.chart.hideLoading();
     },
     initSocket(){
-      // const socket = io("//dev.io.ubankfx.com");
-      const socket = io("//10.0.1.18:8500",{
-        transports:['websocket'],
-        path:'/socket.io/'
-      });
+      const socket = io("//dev.io.ubankfx.com");
+      // const socket = io("//10.0.1.18:8500",{
+      //   transports:['websocket'],
+      //   path:'/socket.io/'
+      // });
       socket.on("connect",()=>{
         socket.emit("quotes:subscribe","quotes");
       });
@@ -392,6 +469,7 @@ let VChart = {
             type:'sma',
             linkedTo:"aapl",
             name:"MA(5)",
+            id:"ma5",
             params:{
               period:5,
             }
@@ -400,6 +478,7 @@ let VChart = {
             type:'sma',
             linkedTo:"aapl",
             name:"MA(10)",
+            id:"ma10",
             params:{
               period:10,
             }
@@ -408,12 +487,14 @@ let VChart = {
             type:'sma',
             linkedTo:"aapl",
             name:"MA(20)",
+            id:"ma20",
             params:{
               period:20,
             }
           },
           {
             type:"bb",
+            id:"bb",
             topLine:{
               styles:{
                 lineColor:"pink",
@@ -437,6 +518,7 @@ let VChart = {
           },
           {
             yAxis:1,
+            id:"macd",
             tooltip:{
               pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
                 'MACD 线：{point.MACD}<br/>' +
@@ -451,7 +533,7 @@ let VChart = {
               signalPeriod:9,
               period:26,
             }
-          }
+          },
         ]
       }
       this.chart = new Highcharts.stockChart( "chartId", options);
