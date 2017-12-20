@@ -1,13 +1,36 @@
 
 // let Highcharts = require("highchart");
 // import Highcharts from "highchart";
+function render(chart, point, text,ishigh) {
+    let obj=null;
+    if(ishigh){
+      obj = chart.renderer.label("←"+text + ': ' + point.y,  point.plotX , point.plotY , 'callout', point.plotX + chart.plotLeft, point.plotY + chart.plotTop);
+    }else{
+      obj = chart.renderer.label("←"+text + ': ' + point.y,  point.plotX , point.plotY + chart.plotTop+20, 'callout', point.plotX + chart.plotLeft, point.plotY + chart.plotTop+point.shapeArgs.height);
+    }
+
+    obj.css({
+    // color: '#FFFFFF',
+    color:"#000",
+    align: 'center'}).attr({
+        // fill: 'rgba(0, 0, 0, 0.75)',
+        padding: 8,
+        r: 5,
+        zIndex: 6
+    }).add();
+
+}
 let VChart = {
   data(){
     return {
-      forceUpdate:false,
+      isAutoToNews: true,
+      isShowMALine:true,
+      isShowBOLL:false,
+      techType:0,
+      page:1,
+      volumnCount:0,
+      isForceUpdateChart:false,
       socket:null,
-      isShowMA:true,
-      isShowBOLL:true,
       newestRange:[0,0],
       rangeSelect:0,
       isUpdating:true, // 图表更新开关
@@ -26,7 +49,6 @@ let VChart = {
       chart:null,
       historyData:[],
       valueData:[], // 交易量数据
-      MA:[],// 移动平均线数据
       period:"M1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
@@ -38,12 +60,16 @@ let VChart = {
         <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="fetchChartHistory(p)">{{p}}</li>
       </ul>
       <ul class="btns_history">
-        <li class="item" @click.stop="showMA">MA</li>
-        <li class="item" @click.stop="showBOLL">BOLL</li>
+        <li class="item" :class="{'active':isShowMALine}" @click.stop="showMALine">MA</li>
+        <li class="item" :class="{'active':isShowBOLL}" @click.stop="showBOLL">BOLL</li>
       </ul>
       <ul class="btns_history">
-        <li class="item" @click.stop="showMACD">MACD</li>
-        <li class="item" @click.stop="showRSI">RSI</li>
+        <li class="item" :class="{'active':techType==0}" @click.stop="showMACD">MACD</li>
+        <li class="item" :class="{'active':techType==1}" @click.stop="showRSI">RSI</li>
+        <li class="item" :class="{'active':techType==2}" @click.stop="showVolumn">VOL</li>
+      </ul>
+      <ul class="btns_history">
+        <li class="item" :class="{'active':isAutoToNews}" @click.stop="clickAutoToNews">AN</li>
       </ul>
       <div id="chartId"></div>
     </div>
@@ -53,31 +79,32 @@ let VChart = {
   },
   computed:{
     periodRange(){
-      let pointSize = 600;
+      let pointSize=800,r=0;
       // 获取每个时间段取值范围
       switch(this.period){
-        case "M1":{this.rangeSelect=0;this.timeRange=60;return pointSize*60;}break;
-        case "M5":{this.rangeSelect=1;this.timeRange=5*60;return pointSize*5*60;}break;
-        case "M15":{this.rangeSelect=2;this.timeRange=15*60;return pointSize*15*60;}break;
-        case "M30":{this.rangeSelect=3;this.timeRange=30*60;return pointSize*30*60;}break;
-        case "H1":{this.rangeSelect=4;this.timeRange=60*60;return pointSize*60*60;}break;
-        case "H4":{this.rangeSelect=5;this.timeRange=4*60*60;return pointSize*240*60;}break;
-        case "D1":{this.rangeSelect=6;this.timeRange=24*60*60;return pointSize*24*60*60;}break;
-        case "W1":{this.rangeSelect=7;this.timeRange=7*24*60*60;return pointSize*7*24*60*60;}break;
-        case "MN":{this.rangeSelect=8;this.timeRange=30*24*60*60;return pointSize*30*24*60*60;}break;
+        case "M1":{this.rangeSelect=0;this.timeRange=60;r=pointSize*60;}break;
+        case "M5":{this.rangeSelect=1;this.timeRange=5*60;r=pointSize*5*60;}break;
+        case "M15":{this.rangeSelect=2;this.timeRange=15*60;r=pointSize*15*60;}break;
+        case "M30":{this.rangeSelect=3;this.timeRange=30*60;r=pointSize*30*60;}break;
+        case "H1":{this.rangeSelect=4;this.timeRange=60*60;r=pointSize*60*60;}break;
+        case "H4":{this.rangeSelect=5;this.timeRange=4*60*60;r=pointSize*240*60;}break;
+        case "D1":{this.rangeSelect=6;this.timeRange=24*60*60;r=pointSize*24*60*60;}break;
+        case "W1":{this.rangeSelect=7;this.timeRange=7*24*60*60;r=pointSize*7*24*60*60;}break;
+        case "MN":{this.rangeSelect=8;this.timeRange=30*24*60*60;r=pointSize*30*24*60*60;}break;
       }
+      return r;
     },
     chartSeries(){
       return this.chart&&this.chart.get("aapl");
     },
-    chartSeriesMA5(){
-      return this.chart&&this.chart.get("ma5");
+    chartMA5Series(){
+      return this.chart&&this.chart.get('ma5');
     },
-    chartSeriesMA10(){
-      return this.chart&&this.chart.get("ma10");
+    chartMA10Series(){
+      return this.chart&&this.chart.get('ma10');
     },
-    chartSeriesMA20(){
-      return this.chart&&this.chart.get("ma20");
+    chartMA20Series(){
+      return this.chart&&this.chart.get('ma20');
     },
     chartSeriesBOOL(){
       return this.chart&&this.chart.get("bb");
@@ -85,82 +112,190 @@ let VChart = {
     chartSeriesMACD(){
       return this.chart&&this.chart.get("macd");
     },
+    chartSeriesRSI6(){
+      return this.chart&&this.chart.get("rsi6");
+    },
+    chartSeriesRSI12(){
+      return this.chart&&this.chart.get("rsi12");
+    },
+    chartSeriesRSI24(){
+      return this.chart&&this.chart.get("rsi24");
+    },
+    chartSeriesVolumn(){
+      return this.chart&&this.chart.get("volumn");
+    },
     points(){
       return this.chartSeries.points;
+    },
+    fromToData(){
+      return [this.tradePrice.t-this.page*this.periodRange,this.tradePrice.t-((this.page-1)*this.periodRange)];
     }
   },
   methods:{
-    showMA(){
-      this.isShowMA = !this.isShowMA;
-      if(this.isShowMA){
-        this.chartSeriesMA5.show();
-        this.chartSeriesMA10.show();
-        this.chartSeriesMA20.show();
+    clickAutoToNews(){
+      this.isAutoToNews = !this.isAutoToNews;
+    },
+    prevPage(){
+      this.fetchChartHistoryData(this.fromToData[0],this.fromToData[1]);
+    },
+    gotoNewestExtreme(){
+      this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
+    },
+    displayProduct(k){
+      return k&&this.i18n('trade.'+k.replace(/\.pro$/,''))||"";
+    },
+    showLoginDialog(){
+      this.$emit("showLoginDialog");
+    },
+    updateChartSeries(){
+      this.chartSeries.setData(this.historyData);
+
+      // 每次更新完数据重新计算极限值
+      let extrem = this.chart.xAxis[0].getExtremes();
+      this.newestRange = [extrem.min,extrem.max];
+
+      if(this.isShowMALine){
+        this.chartMA5Series.update({linkedTo:"aapl"});
+        this.chartMA10Series.update({linkedTo:"aapl"});
+        this.chartMA20Series.update({linkedTo:"aapl"});
+      }else if(this.isShowBOLL){
+        this.chartSeriesBOOL.update({linkedTo:"aapl"});
+      }
+      // 默认显示macd
+      if(this.techType==0){
+        this.chartSeriesMACD.update({linkedTo:"aapl"});
+      }else if(this.techType==1){
+        this.chartSeriesRSI6.update({linkedTo:"aapl"});
+        this.chartSeriesRSI12.update({linkedTo:"aapl"});
+        this.chartSeriesRSI24.update({linkedTo:"aapl"});
+      }else if(this.techType==2){
+        this.chartSeriesVolumn.setData(this.volumnData);
+      }
+    },
+    showMALine(){
+      this.isShowMALine = !this.isShowMALine;
+      if(this.isShowMALine){
+        this.chartMA5Series.show();
+        this.chartMA10Series.show();
+        this.chartMA20Series.show();
+        this.isShowBOLL = true;
+        this.showBOLL();
       }else{
-        this.chartSeriesMA5.hide();
-        this.chartSeriesMA10.hide();
-        this.chartSeriesMA20.hide();
+        this.chartMA5Series.hide();
+        this.chartMA10Series.hide();
+        this.chartMA20Series.hide();
       }
     },
     showBOLL(){
       this.isShowBOLL = !this.isShowBOLL;
       if(this.isShowBOLL){
         this.chartSeriesBOOL.show();
+        this.isShowMALine = true;
+        this.showMALine();
       }else{
         this.chartSeriesBOOL.hide();
       }
     },
     showMACD(){
-      this.chartSeriesMACD.update({
-        tooltip:{
-          pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
-            'MACD 线：{point.MACD}<br/>' +
-            '信号线：{point.signal}<br/>' +
-            '振荡指标：{point.y}<br/>'
-        },
-        type:"macd",
-        linkedTo:"aapl",
-        params:{
-          shortPeriod:12,
-          longPeriod:26,
-          signalPeriod:9,
-          period:26,
-        }
-      })
+      this.techType = 0;
+      this.chartSeriesRSI6.hide();
+      this.chartSeriesRSI12.hide();
+      this.chartSeriesRSI24.hide();
+      this.chartSeriesVolumn.hide();
+
+      this.chartSeriesMACD.update({type:"macd"})
+      this.chartSeriesMACD.show();
     },
     showRSI(){
-      this.chartSeriesMACD.update({
-        type: 'rsi',
-        params:{},
-        linkedTo:"aapl",
-        params:{
-          decimals:6,
-        },
-        tooltip:{
-          pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}',
-        }
-      })
+      this.techType = 1;
+      this.chartSeriesVolumn.hide();
+      this.chartSeriesMACD.hide();
+
+      this.chartSeriesRSI6.show();
+      this.chartSeriesRSI12.show();
+      this.chartSeriesRSI24.show();
+    },
+    showVolumn(){
+      this.techType = 2;
+      this.chartSeriesRSI6.hide();
+      this.chartSeriesRSI12.hide();
+      this.chartSeriesRSI24.hide();
+      this.chartSeriesMACD.hide();
+
+      this.chartSeriesVolumn.show();
     },
     gotoNewestExtreme(){
       this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
     },
-    fetchChartHistory(period){
+    fetchChartHistory(period,isclick){
+      if(isclick||this.period===period){
+        this.isForceUpdateChart = true;
+      }
       this.period = period;
       this.fetchChartHistoryData();
+    },
+    fetchChartHistoryData(){
+      let st=this.currentTime-this.periodRange;
+      let et = this.currentTime;
+      this.chart&&this.chart.showLoading("加载中...");
+      // m1为1小时数据
+      let url = '//dev.io.ubankfx.com/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
+      this.inProgress = true;
+      this.$http.get(url).then((resp)=>{
+        let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
+	      this.historyData=[]; // 历史数据数据重置
+        this.volumnData = [];// 交易量数据重置
+        this.historyData = _.map(_data,(v,k)=>{
+          this.volumnData.push([v.ot*1000,v.vl]); // 成交量
+          // time, open, high, low, close
+          return [v.ot*1000,v.op,v.hp,v.lp,v.cp];
+        });
+        // 如果有chart对象就update否则就初始化chart表
+	      let _lastData = _.last(this.historyData);
+        if(!_lastData){
+          return;
+        }
+	      this.openTime = Math.floor(_lastData[0]/1000);// 当前开盘时间
+        this.openPrice = _lastData[1];//初始化最近一次的卖出价为新点的开盘价
+        this.maxRange = _lastData[2];
+        this.minRange = _lastData[3];
+        if(this.isForceUpdateChart){ // 以下会触发这里：重复点击m1,切换产品,historyData超载
+          this.initChart();
+          this.showMACD(); // 默認显示macd
+          this.chart.rangeSelector.clickButton(this.rangeSelect);
+        }else{
+          // 如果有chart对象就update否则就初始化chart表
+          if(!this.chart){
+            this.currentPrice = this.openPrice;
+            this.currentTime = this.openTime;
+            this.initChart();
+          }else{
+            // 更新图表
+            this.updateChartSeries();
+          }
+        }
+      }).finally(()=>{
+        // range selector 触发按钮
+        this.chart.hideLoading();
+        this.isForceUpdateChart = false;
+        this.inProgress=false;
+      });
     },
     addNewCandleTick(d){
       // console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
       this.openTime+=this.timeRange;
-      // let newData = [this.openTime*1000,this.openPrice,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       let newData = [this.openTime*1000,d.a,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       // console.log(d.t+"===addnew point==",newData+"==="+this.openTime);
-      // this.chartSeries.addPoint(newData,true,true);
+      // this.chartSeries.addPoint(newData,true,true,false);// opts,redraw,shift,animation
+      let volumnData = [this.openTime*1000,this.volumnCount];
+
       if(this.historyData.length>=1000){
-        this.forceUpdate = true;
-        this.fetchChartHistoryData();
+        this.fetchChartHistory(this.period,true);//重新更新数据
       }else{
         this.historyData.push(newData);
-        this.chartSeries.setData(this.historyData);
+        this.volumnData.push(volumnData);
+        this.updateChartSeries();
+        this.volumnCount = 0; // 交易量重置
       }
 
       this.openPrice = d.b;
@@ -171,9 +306,10 @@ let VChart = {
       if(!this.chartSeries){
         return;
       }
+      this.volumnCount++; //每一次报价，交易量+1统计
 
       this.currentTime=d.t;
-      // console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
+      console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
       if(this.openTime+this.timeRange-d.t<1){
         this.addNewCandleTick(d);
         return;
@@ -181,7 +317,7 @@ let VChart = {
       this.maxRange = _.max([d.b,this.maxRange]);
       this.minRange = _.min([d.b,this.minRange]);
       let lastPoint = _.last(this.chartSeries.points);
-      let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];
+      let newData = [lastPoint.x,this.openPrice,this.maxRange,this.minRange,d.b];
       // console.log(d,"===updated====",newData);
       this.currentPrice = d.b;
       let yAxis = this.chart.yAxis[0];
@@ -189,17 +325,25 @@ let VChart = {
       yAxis.options.plotLines[0].label.text = this.currentPrice;
 
       lastPoint.update(newData,true,false);
+      if(this.techType==2){
+        let lastVolPoint = _.last(this.chartSeriesVolumn.points);
+        lastVolPoint.update([lastVolPoint.x,this.volumnCount]);
+      }
       yAxis.update(yAxis.options,true);
     },
     updateChartSeries(){
       this.chartSeries.setData(this.historyData);
-      this.chart.rangeSelector.clickButton(this.rangeSelect);
+      this.chartMA5Series.update({linkedTo:'aapl'});
+      this.chartMA10Series.update({linkedTo:'aapl'});
+      this.chartMA20Series.update({linkedTo:'aapl'});
+      this.chartSeriesBOOL.update({linkedTo:'aapl'});
+      this.chartSeriesMACD.update({linkedTo:'aapl'})
 
       // 每次更新完数据重新计算极限值
       let extrem = this.chart.xAxis[0].getExtremes();
       this.newestRange = [extrem.min,extrem.max];
 
-      this.chart.hideLoading();
+      this.chart.rangeSelector.clickButton(this.rangeSelect);
     },
     initSocket(){
       this.socket = io("//dev.io.ubankfx.com",{
@@ -233,24 +377,36 @@ let VChart = {
         if(this.isUpdating){
           this.updatePoint(d);
         }else{
-          this.gotoNewestExtreme();
+          if(this.isAutoToNews){
+            this.gotoNewestExtreme();
+          }
         }
       });
     },
     initChart(){
       let that = this;
+      let count=0;
+      let openText="开盘",
+      closeText = "收盘",
+      highText = "最高",
+      lowText ="最低",
+      bollTitle = "布林(20,2)",
+      macdText = "MACD线",
+      signalText = "信号线",
+      oscText = "震蕩指標",
+      volumnTitle = "交易量";
       Highcharts.setOptions( {
         global: {
           useUTC: true,
         },
         lang: {
+          rangeSelectorZoom:"",
           noData: "No Data",
           shortMonths: ['01', '02', '03', '04', '05', '06',  '07', '08', '09', '10', '11', '12'],
         }
       } );
       // create the chart
       const options = {
-        height:'100%',
         loading:{
           labelStyle:{
             fontSize:"20px",
@@ -261,17 +417,43 @@ let VChart = {
           }
         },
         chart:{
+          zoomType:"xy",
+          spacingBottom:5,
           zoomType:null,
           events:{
             load: function(){
               // console.log("===load")
+              this.rangeSelector.clickButton(that.rangeSelect);
+
+              // var min = 1000,
+              //     max = 0,
+              //     pointsToShow = [0, 0],
+              //     points = this.series[0].points;
+              // _.forEach(points, function(p,idx) {
+              //     //console.log(p);
+              //     if(p.y>max) {
+              //         pointsToShow[0] = idx;
+              //         max = p.y;
+              //     }
+              //     if(p.y<min) {
+              //         pointsToShow[1] = idx;
+              //         min = p.y;
+              //     }
+              // });
+              // render(this, points[pointsToShow[0]], 'Max',true);
+              // render(this, points[pointsToShow[1]], 'Min',false);
             },
-            render:function(){
-              // console.log("===render")
-            }
           }
         },
         plotOptions:{
+          xAxis:{
+            minPadding: 0,
+            maxPadding:0,
+          },
+          yAxis:{
+            minPadding: 0,
+            maxPadding:0,
+          },
           //修改蜡烛颜色
           candlestick: {
             upLineColor:"#5ac71e",
@@ -282,18 +464,18 @@ let VChart = {
             pointWidth:6, // 蜡烛宽度
             dataGrouping:{
               enabled:false,
-            },
-            maker:{
-              states:{
-                hover:{
-                  enabled:false,
-                }
-              }
             }
           },
-  	    	//去掉曲线和蜡烛上的hover事件
+          //去掉曲线和蜡烛上的hover事件
           series: {
-          	states: {
+            findNearestPointBy:"xy",
+            pointPadding:0,
+            groupPadding:0,
+            marker:{enabled:false},
+            dataGrouping: {
+              enabled:false,
+            },
+            states: {
               hover: {
                 enabled: false
               }
@@ -309,6 +491,7 @@ let VChart = {
           enabled: false,
         },
         navigator: {
+          margin:0,
           enabled: true,
           height:0,
           outlineWidth:0,
@@ -325,10 +508,6 @@ let VChart = {
         navigation:{
           enabled:false,
         },
-        tooltip:{
-          shared:true,
-          split:false,
-        },
         rangeSelector: {
           enabled: true,
           selected:0,
@@ -337,17 +516,17 @@ let VChart = {
             display:"none",
           },
           buttonPosition:{
-            x:400,
+            x:200,
             y:0,
           },
           buttonTheme:{
             display:'none',
           },
           buttons:[
-            {type:"hour",count:3,text:"3h"},
-            {type:"hour",count:10,text:"10h"},
+            {type:"hour",count:2,text:"2h"},
             {type:"day",count:1,text:"1d"},
-            {type:"day",count:2,text:"2d"},
+            {type:"day",count:3,text:"3d"},
+            {type:"day",count:4,text:"4d"},
             {type:"week",count:1,text:"1w"},
             {type:"month",count:1,text:"1m"},
             {type:"month",count:5,text:"5m"},
@@ -355,90 +534,103 @@ let VChart = {
             {type:"year",count:8,text:"8y"},
           ]
         },
-        xAxis: {
-          events:{
-            afterSetExtremes:function(e){
-              const DEVIATION=60000; // 2分钟误差，毫秒单位
-              let currMax = _.floor(e.max),currMin = _.floor(e.min),dataMax = e.dataMax,dataMin = e.dataMin;
-              if(currMax==dataMax){
-                that.newestRange = [currMin,currMax]; // 更新最新极限范围
-                //启动更新
-                that.isUpdating = true;
-              }else if(currMin<=dataMin+DEVIATION){// 2分钟误差, 毫秒比对
-                if(that.newestRange[0]&&that.newestRange[1]){
+        xAxis: [
+          {
+            type:"datetime",
+            events:{
+              afterSetExtremes:function(e){
+                const DEVIATION=60000; // 2分钟误差，毫秒单位
+                let currMax = _.floor(e.max),currMin = _.floor(e.min),dataMax = e.dataMax,dataMin = e.dataMin;
+                if(currMax==dataMax){
+                  that.newestRange = [currMin,currMax]; // 更新最新极限范围
+                  //启动更新
+                  that.isUpdating = true;
+                }else if(currMin<=dataMin+DEVIATION){// 2分钟误差, 毫秒比对
+                  if(that.newestRange[0]&&that.newestRange[1]){
+                    that.isUpdating = false;
+                    // that.page++;
+                    console.log("====is need to ajax==");
+                    // that.prevPage();
+                  }
+                }else{
+                  // 暂停更新
                   that.isUpdating = false;
-                  console.log("====is need to ajax==");
                 }
-              }else{
-                // 暂停更新
-                that.isUpdating = false;
               }
-            }
-          },
-          // endOnTick:true, // 这个会影响到拖动，会使endtime点不动进行扩大
-          crosshair: {
-            color:"#727A98",
-            label: {
-              formatter: function (e) {
-                return Highcharts.dateFormat("%Y-%m-%d %H:%M:%S", e);
-              },
-              enabled: true,
-              borderWidth: 1,
             },
-            zIndex:10,
-          },
-          dateTimeLabelFormats:{
-            minute: '%H:%M',
-            hour: '%H:%M',
-            day: '%b-%e',
-            week: '%b-%e-%Y',
-            month: '%Y-%b',
-            year: '%Y-%b'
-          },
-        },
-        yAxis: [ {
-          height:"80%",
-          showLastLabel:true,
-          showFirstLabel:false,
-          gridLineDashStyle:"longdash",
-          gridLineWidth: 1,
-          offset:55,
-          labels:{
-            step: 1,
-            formatter: function(){
-              return this.value;
-            }
-          },
-          plotLines: [
-            {
-              value: this.currentPrice,
-              color: 'gray',
-              width: 1,
-              label:{
-                useHTML:true,
-                align:"right",
-                style:{
-                  backgroundColor:"#000",
-                  color:"#fff",
-                  padding:"0 5px",
-                  fontSize:"12px",
+            crosshair: {
+              color:"#727A98",
+              label: {
+                formatter: function (e) {
+                  return Highcharts.dateFormat("%Y-%m-%d %H:%M", e);
                 },
-                text:this.currentPrice,
-                x:50,
-                y:3,
+                enabled: true,
+                borderWidth: 1,
               },
-              zIndex:5,
-            }
-          ],
+              zIndex:10,
+            },
+            dateTimeLabelFormats:{
+              minute: '%H:%M',
+              hour: '%H:%M',
+              day: '%b-%e',
+              week: '%b-%e-%Y',
+              month: '%Y-%b',
+              year: '%Y-%b'
+            },
+            // labels:{
+            //   formatter:function(){
+            //     console.log("===",this.value)
+            //     reutrn this.value;
+            //   }
+            // }
+          }
+        ],
+        yAxis: [
+          {
+            height:'80%',
+            showLastLabel: true, //是否显示最后一个轴标签
+            showFirstLabel:false,
+            gridLineDashStyle:"longdash",
+            gridLineWidth: 1,
+            offset:55,
+            labels:{
+              step: 1,
+              formatter: function(){
+                return this.value.toFixed(6);
+              }
+            },
+            plotLines: [
+              {
+                value: this.currentPrice.toFixed(6),
+                color: 'gray',
+                width: 1,
+                label:{
+                  useHTML:true,
+                  align:"right",
+                  style:{
+                    backgroundColor:"#000",
+                    color:"#fff",
+                    padding:"0 5px",
+                    fontSize:"12px",
+                  },
+                  text:this.currentPrice.toFixed(6),
+                  x:50,
+                  y:3,
+                },
+                zIndex:5,
+              }
+            ],
 
           crosshair: {
             color:"#727A98",
             label: {
               enabled: true,
               borderWidth: 1,
+              formatter:function(v){
+                return v.toFixed(6);
+              }
             }
           },
-          showLastLabel: true, //是否显示最后一个轴标签
           resize: {
             enabled: true
           },
@@ -454,120 +646,205 @@ let VChart = {
         },
         series: [ {
             type: 'candlestick',
-            data: this.historyData,
             id:"aapl",
+            data: this.historyData,
             dataGrouping:{
-              enableds:true,
+              enabled:false,
             },
-            yAxis:0,
             tooltip:{
-              shared:true,
-              split:false,
-              userHTML:true,
               headerFormat:'',
-              pointFormat:'开盘：<p>{point.open}</p><br>最高：<p>{point.high}</p><br>最低：<p>{point.low}</p><br>收盘：<p>{point.close}</p><br>',
+              pointFormat:openText+'：<p>{point.open}</p><br>'+highText+'：<p>{point.high}</p><br>'+lowText+'：<p>{point.low}</p><br>'+closeText+'：<p>{point.close}</p><br>',
             },
+            // dataLabels:{
+            //   enabled: true,
+            //   shadow:true,
+            //   style:{
+            //     fontWeight: 'bold'
+            //   },
+            //   useHTML: true,
+            //   inside:true,
+            //   zIndex:5,
+            //   align:"right",
+            //   formatter:function(){
+            //     if(this.point.high===this.point.series.dataMax){
+            //       let t = -this.point.shapeArgs.height+10;
+            //       return '<span class="mark high" style="top:'+t+'px;">High:' + this.point.high + '</span>';
+            //     }else if(this.point.low===this.point.series.dataMin) {
+            //       let t = this.point.shapeArgs.height+10;
+            //       return '<span  class="mark low" style="top:'+t/2+'px;">Low:' + this.point.low + '</span>';
+            //     }
+            //   }
+            // },
           },
           {
-            type:'sma',
-            linkedTo:"aapl",
-            name:"MA(5)",
+            type: 'sma',
+            name: 'MA5',
             id:"ma5",
+            linkedTo:"aapl",
+            color:'#58C6FF',
+            lineWidth:1,
+            dataGrouping: {
+          	  enabled: false
+            },
             params:{
               period:5,
+            },
+            tooltip:{
+              pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
             }
           },
           {
-            type:'sma',
-            linkedTo:"aapl",
-            name:"MA(10)",
+            type: 'sma',
+            name: 'MA10',
             id:"ma10",
+            linkedTo:"aapl",
+            color:'#ED58FF',
+            lineWidth:1,
+            dataGrouping: {
+          	  enabled: false
+            },
             params:{
               period:10,
+            },
+            tooltip:{
+              headerFormat:'',
+              pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
             }
           },
           {
-            type:'sma',
-            linkedTo:"aapl",
-            name:"MA(20)",
+            type: 'sma',
+            name: 'MA20',
             id:"ma20",
+            linkedTo:"aapl",
+            color:'#FFAE58',
+            lineWidth:1,
+            dataGrouping: {
+          	  enabled: false
+            },
             params:{
               period:20,
+            },
+            tooltip:{
+              headerFormat:'',
+              pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
             }
           },
           {
             type:"bb",
             id:"bb",
+            visible:false,
+            lineWidth:1,
             topLine:{
               styles:{
-                lineColor:"pink",
+                lineColor:"#ED58FF",
               }
             },
             bottomLine: {  // 下轨线
                 styles: {
-                    lineColor: 'purple'
+                    lineColor: '#58C6FF'
                 }
             },
-            color: '#006cee', //中轨颜色
+            color: '#FFAE58', //中轨颜色
             tooltip: {
-                pointFormat: '<span style="color:{point.color}">\u25CF</span>' +
+              headerFormat:'',
+              pointFormat: '<span style="color:{point.color}">\u25CF</span>' +
                 '<b> {series.name}</b><br/>' +
                 'UP: {point.top}<br/>' +
                 'MB: {point.middle}<br/>' +
                 'DN: {point.bottom}<br/>'
             },
-            name: '布林（20,2）',
+            name: bollTitle,
             linkedTo: 'aapl'
           },
           {
             yAxis:1,
             id:"macd",
-            tooltip:{
-              pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
-                'MACD 线：{point.MACD}<br/>' +
-                '信号线：{point.signal}<br/>' +
-                '振荡指标：{point.y}<br/>'
-            },
-            type:"macd",
+            // type:"macd",// 先注销，否则没数据会报错，showMACD时配上type
+            color:"#7CB5EC",
             linkedTo:"aapl",
+            // color: '#5ac71e',
+            // negativeColor: '#f23244',
+            pointWidth:2,
+            signalLine:{
+              styles:{
+                lineColor:"#ffae58",
+              }
+            },
+            macdLine:{
+              styles:{
+                lineColor:"#58c6ff"
+              }
+            },
             params:{
               shortPeriod:12,
               longPeriod:26,
               signalPeriod:9,
               period:26,
-            }
+            },
+            tooltip:{
+              headerFormat:'',
+              pointFormat:'<span style="color:{point.color}">\u25CF</span> <b> {series.name}</b><br/>' +
+                macdText+'：{point.MACD}<br/>' +
+                signalText+'：{point.signal}<br/>' +
+                oscText+'：{point.y}<br/>'
+            },
           },
+	        {
+            type: 'rsi',
+            name:"RSI(6)",
+            id:"rsi6",
+            linkedTo: 'aapl',
+            params:{
+              period:6,
+              decimals:6,
+            },
+            yAxis:1,
+            visible:false,
+          },
+          {
+            type: 'rsi',
+            name:"RSI(12)",
+            id:"rsi12",
+            linkedTo: 'aapl',
+            params:{
+              period:12,
+              decimals:6,
+            },
+            yAxis:1,
+            visible:false,
+          },
+          {
+            type: 'rsi',
+            name:"RSI(24)",
+            id:"rsi24",
+            linkedTo: 'aapl',
+            params:{
+              period:24,
+              decimals:6,
+            },
+            yAxis:1,
+            visible:false,
+          },
+          {
+            type: 'column',
+            id:"volumn",
+            pointWidth:6,
+            name:volumnTitle,
+            groupPadding:0,
+            pointPadding:0,
+            data:this.volumnData,
+            yAxis:1,
+            color:"#7CB5EC",
+            tooltip:{
+              headerFormat:'',
+              pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
+            }
+          }
         ]
       }
       this.chart = new Highcharts.stockChart( "chartId", options);
     },
-    fetchChartHistoryData(){
-      let st=this.currentTime-this.periodRange;
-      let et = this.currentTime;
-      this.chart&&this.chart.showLoading("加载中...");
-      // m1为1小时数据
-      let url = '//dev.io.ubankfx.com/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
-      this.$http.get(url).then((resp)=>{
-        let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
-        this.historyData = _.map(_data,(v,k)=>{
-          // time, open, high, low, close
-          return [v.ot*1000,v.op,v.hp,v.lp,v.cp];
-        });
-        // 如果有chart对象就update否则就初始化chart表
-        if(this.forceUpdate){
-          this.initChart();
-        }else{
-          if(!this.chart){
-            this.initChart();
-          }else{
-            this.updateChartSeries();
-          }
-        }
 
-      }).finally(()=>{
-        this.chart.hideLoading();
-      });
-    }
   }
 }
 
