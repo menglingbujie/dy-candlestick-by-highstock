@@ -35,7 +35,6 @@ let VChart = {
       newestRange:[0,0],
       isUpdating:true, // 图表更新开关
       inProgress:false,
-      volumnData:[],
       maset:[5,10,20],
       productName:"EURUSD",
       // productName:"USDJPY",
@@ -48,7 +47,7 @@ let VChart = {
       openTime:0,
       chart:null,
       historyData:[],
-      valueData:[], // 交易量数据
+      volumnData:[], // 交易量数据
       period:"M1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
@@ -57,7 +56,7 @@ let VChart = {
     <div class="chart">
       <strong class='title'>{{this.productName}}</strong>
       <ul class="btns_history">
-        <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="fetchChartHistory(p)">{{p}}</li>
+        <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="fetchChartHistory(p,false)">{{p}}</li>
       </ul>
       <ul class="btns_history">
         <li class="item" :class="{'active':isShowMALine}" @click.stop="showMALine">MA</li>
@@ -222,8 +221,10 @@ let VChart = {
     gotoNewestExtreme(){
       this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
     },
-    fetchChartHistory(period,isclick){
-      if(isclick||this.period===period){
+    fetchChartHistory(period,isfocueupdate){
+      if(isfocueupdate){
+        this.isForceUpdateChart = true;
+      }else if(this.period===period){
         this.isForceUpdateChart = true;
       }
       this.period = period;
@@ -236,8 +237,8 @@ let VChart = {
       let url = '//io.ubankfx.com/chart?to='+et+'&symbol='+this.productName+'&period='+this.period+"&num="+this.MAX_POINT;
       this.inProgress = true;
       this.$http.get(url).then((resp)=>{
-        let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
-	      this.historyData=[]; // 历史数据数据重置
+        let _data = resp.body.data&&_.sortBy(resp.body.data,['ot']);
+        this.historyData=[]; // 历史数据数据重置
         this.volumnData = [];// 交易量数据重置
         this.historyData = _.map(_data,(v,k)=>{
           this.volumnData.push([v.ot*1000,v.vl]); // 成交量
@@ -256,7 +257,7 @@ let VChart = {
         if(this.isForceUpdateChart){ // 以下会触发这里：重复点击m1,切换产品,historyData超载
           this.initChart();
           this.showMACD(); // 默認显示macd
-          this.chart.rangeSelector.clickButton(this.rangeSelect);
+          // this.chart.rangeSelector.clickButton(this.rangeSelect);
         }else{
           // 如果有chart对象就update否则就初始化chart表
           if(!this.chart){
@@ -279,8 +280,6 @@ let VChart = {
       // console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
       this.openTime+=this.timeRange;
       let newData = [this.openTime*1000,d.a,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
-      // console.log(d.t+"===addnew point==",newData+"==="+this.openTime);
-      // this.chartSeries.addPoint(newData,true,true,false);// opts,redraw,shift,animation
       let volumnData = [this.openTime*1000,this.volumnCount];
 
       // console.log(this.historyData.length+"==add news=",newData);
@@ -312,7 +311,8 @@ let VChart = {
       this.maxRange = _.max([d.b,this.maxRange]);
       this.minRange = _.min([d.b,this.minRange]);
       let lastPoint = _.last(this.chartSeries.points);
-      console.log(lastPoint.x,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
+      // console.log(lastPoint.x+"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
+      // let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];
       let newData = [lastPoint.x,this.openPrice,this.maxRange,this.minRange,d.b];
       // console.log(d,"===updated====",newData);
       this.currentPrice = d.b;
@@ -327,20 +327,7 @@ let VChart = {
       }
       yAxis.update(yAxis.options);
     },
-    updateChartSeries(){
-      this.chartSeries.setData(this.historyData);
-      this.chartMA5Series.update({linkedTo:'aapl'});
-      this.chartMA10Series.update({linkedTo:'aapl'});
-      this.chartMA20Series.update({linkedTo:'aapl'});
-      this.chartSeriesBOOL.update({linkedTo:'aapl'});
-      this.chartSeriesMACD.update({linkedTo:'aapl'})
 
-      // 每次更新完数据重新计算极限值
-      let extrem = this.chart.xAxis[0].getExtremes();
-      this.newestRange = [extrem.min,extrem.max];
-
-      this.chart.rangeSelector.clickButton(this.rangeSelect);
-    },
     initSocket(){
       this.socket = io("//dev.io.ubankfx.com",{
         transports:['websocket'],
@@ -363,7 +350,7 @@ let VChart = {
         this.minRange = lastData.b;
 
         // 获取到服务器时间后，根据服务器时间初始化历史记录
-        this.fetchChartHistory(this.period);
+        this.fetchChartHistory(this.period,true);
       })
       this.socket.on("quotes:update",(data)=>{
         // console.log("==update:"+data);
@@ -460,6 +447,13 @@ let VChart = {
             pointWidth:6, // 蜡烛宽度
             dataGrouping:{
               enabled:false,
+            },
+            maker:{
+              states:{
+                hover:{
+                  enabled:false,
+                }
+              }
             }
           },
           //去掉曲线和蜡烛上的hover事件
@@ -503,6 +497,10 @@ let VChart = {
         },
         navigation:{
           enabled:false,
+        },
+        tooltip:{
+          shared:true,
+          split:false,
         },
         rangeSelector: {
           enabled: true,
@@ -636,10 +634,6 @@ let VChart = {
           height:"20%",
         }
         ],
-        tooltip:{
-          shared:true,
-          split:false,
-        },
         series: [ {
             type: 'candlestick',
             id:"aapl",
