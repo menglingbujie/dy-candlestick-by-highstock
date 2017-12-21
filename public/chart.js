@@ -23,6 +23,7 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
+      MAX_POINT:500,
       isAutoToNews: true,
       isShowMALine:true,
       isShowBOLL:false,
@@ -32,7 +33,6 @@ let VChart = {
       isForceUpdateChart:false,
       socket:null,
       newestRange:[0,0],
-      rangeSelect:0,
       isUpdating:true, // 图表更新开关
       inProgress:false,
       volumnData:[],
@@ -78,19 +78,18 @@ let VChart = {
     this.initSocket();
   },
   computed:{
-    periodRange(){
-      let pointSize=800,r=0;
-      // 获取每个时间段取值范围
+    rangeSelect(){
+      let r =0;
       switch(this.period){
-        case "M1":{this.rangeSelect=0;this.timeRange=60;r=pointSize*60;}break;
-        case "M5":{this.rangeSelect=1;this.timeRange=5*60;r=pointSize*5*60;}break;
-        case "M15":{this.rangeSelect=2;this.timeRange=15*60;r=pointSize*15*60;}break;
-        case "M30":{this.rangeSelect=3;this.timeRange=30*60;r=pointSize*30*60;}break;
-        case "H1":{this.rangeSelect=4;this.timeRange=60*60;r=pointSize*60*60;}break;
-        case "H4":{this.rangeSelect=5;this.timeRange=4*60*60;r=pointSize*240*60;}break;
-        case "D1":{this.rangeSelect=6;this.timeRange=24*60*60;r=pointSize*24*60*60;}break;
-        case "W1":{this.rangeSelect=7;this.timeRange=7*24*60*60;r=pointSize*7*24*60*60;}break;
-        case "MN":{this.rangeSelect=8;this.timeRange=30*24*60*60;r=pointSize*30*24*60*60;}break;
+        case "M1":{this.timeRange=60;r=0;}break;
+        case "M5":{this.timeRange=5*60;r=1;}break;
+        case "M15":{this.timeRange=15*60;r=2;}break;
+        case "M30":{this.timeRange=30*60;r=3;}break;
+        case "H1":{this.timeRange=60*60;r=4;}break;
+        case "H4":{this.timeRange=4*60*60;r=5;}break;
+        case "D1":{this.timeRange=24*60*60;r=6;}break;
+        case "W1":{this.timeRange=7*24*60*60;r=7;}break;
+        case "MN":{this.timeRange=30*24*60*60;r=8;}break;
       }
       return r;
     },
@@ -126,9 +125,6 @@ let VChart = {
     },
     points(){
       return this.chartSeries.points;
-    },
-    fromToData(){
-      return [this.tradePrice.t-this.page*this.periodRange,this.tradePrice.t-((this.page-1)*this.periodRange)];
     }
   },
   methods:{
@@ -136,7 +132,6 @@ let VChart = {
       this.isAutoToNews = !this.isAutoToNews;
     },
     prevPage(){
-      this.fetchChartHistoryData(this.fromToData[0],this.fromToData[1]);
     },
     gotoNewestExtreme(){
       this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
@@ -235,11 +230,10 @@ let VChart = {
       this.fetchChartHistoryData();
     },
     fetchChartHistoryData(){
-      let st=this.currentTime-this.periodRange;
       let et = this.currentTime;
       this.chart&&this.chart.showLoading("加载中...");
       // m1为1小时数据
-      let url = '//dev.io.ubankfx.com/chart?from='+st+'&to='+et+'&symbol='+this.productName+'&period='+this.period;
+      let url = '//io.ubankfx.com/chart?to='+et+'&symbol='+this.productName+'&period='+this.period+"&num="+this.MAX_POINT;
       this.inProgress = true;
       this.$http.get(url).then((resp)=>{
         let _data = resp.body.data&&_.sortBy(resp.body.data,['ot'])
@@ -276,7 +270,7 @@ let VChart = {
         }
       }).finally(()=>{
         // range selector 触发按钮
-        this.chart.hideLoading();
+        this.chart&&this.chart.hideLoading();
         this.isForceUpdateChart = false;
         this.inProgress=false;
       });
@@ -289,6 +283,7 @@ let VChart = {
       // this.chartSeries.addPoint(newData,true,true,false);// opts,redraw,shift,animation
       let volumnData = [this.openTime*1000,this.volumnCount];
 
+      // console.log(this.historyData.length+"==add news=",newData);
       if(this.historyData.length>=1000){
         this.fetchChartHistory(this.period,true);//重新更新数据
       }else{
@@ -309,7 +304,7 @@ let VChart = {
       this.volumnCount++; //每一次报价，交易量+1统计
 
       this.currentTime=d.t;
-      console.log(d,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
+
       if(this.openTime+this.timeRange-d.t<1){
         this.addNewCandleTick(d);
         return;
@@ -317,6 +312,7 @@ let VChart = {
       this.maxRange = _.max([d.b,this.maxRange]);
       this.minRange = _.min([d.b,this.minRange]);
       let lastPoint = _.last(this.chartSeries.points);
+      console.log(lastPoint.x,"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
       let newData = [lastPoint.x,this.openPrice,this.maxRange,this.minRange,d.b];
       // console.log(d,"===updated====",newData);
       this.currentPrice = d.b;
@@ -329,7 +325,7 @@ let VChart = {
         let lastVolPoint = _.last(this.chartSeriesVolumn.points);
         lastVolPoint.update([lastVolPoint.x,this.volumnCount]);
       }
-      yAxis.update(yAxis.options,true);
+      yAxis.update(yAxis.options);
     },
     updateChartSeries(){
       this.chartSeries.setData(this.historyData);
@@ -524,9 +520,9 @@ let VChart = {
           },
           buttons:[
             {type:"hour",count:2,text:"2h"},
+            {type:"hour",count:10,text:"10h"},
             {type:"day",count:1,text:"1d"},
-            {type:"day",count:3,text:"3d"},
-            {type:"day",count:4,text:"4d"},
+            {type:"day",count:2,text:"2d"},
             {type:"week",count:1,text:"1w"},
             {type:"month",count:1,text:"1m"},
             {type:"month",count:5,text:"5m"},
@@ -652,7 +648,7 @@ let VChart = {
               enabled:false,
             },
             tooltip:{
-              headerFormat:'',
+              // headerFormat:'',
               pointFormat:openText+'：<p>{point.open}</p><br>'+highText+'：<p>{point.high}</p><br>'+lowText+'：<p>{point.low}</p><br>'+closeText+'：<p>{point.close}</p><br>',
             },
             // dataLabels:{
@@ -767,12 +763,12 @@ let VChart = {
             pointWidth:2,
             signalLine:{
               styles:{
-                lineColor:"#ffae58",
+                lineColor:"#58c6ff",
               }
             },
             macdLine:{
               styles:{
-                lineColor:"#58c6ff"
+                lineColor:"#ffae58"
               }
             },
             params:{
