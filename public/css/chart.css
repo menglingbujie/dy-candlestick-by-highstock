@@ -22,6 +22,10 @@ ul,li{list-style:none;}
   padding:5px;
   border-collapse: collapse;
   cursor: pointer;
+  margin-left:-1px;
+}
+.chart>.btns_history>.item:first-child{
+  margin-left:0;
 }
 .chart>.btns_history>.item.active{
   background-color:rgba(206,191,33,0.5);

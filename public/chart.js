@@ -23,6 +23,7 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
+      zoomChart:1,
       MAX_POINT:500,
       isAutoToNews: true,
       isShowMALine:true,
@@ -39,7 +40,7 @@ let VChart = {
       productName:"EURUSD",
       // productName:"USDJPY",
       currentTime:0,
-      timeRange:60,
+      timeRange:30*24*60*60,
       currentPrice:0,
       maxRange:0,
       minRange:0,
@@ -48,7 +49,7 @@ let VChart = {
       chart:null,
       historyData:[],
       volumnData:[], // 交易量数据
-      period:"M1",
+      period:"MN",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
   },
@@ -69,6 +70,8 @@ let VChart = {
       </ul>
       <ul class="btns_history">
         <li class="item" :class="{'active':isAutoToNews}" @click.stop="clickAutoToNews">AN</li>
+        <li class="item" @click.stop="clickZoom(1)">+</li>
+        <li class="item" @click.stop="clickZoom(0)">-</li>
       </ul>
       <div id="chartId"></div>
     </div>
@@ -77,21 +80,6 @@ let VChart = {
     this.initSocket();
   },
   computed:{
-    rangeSelect(){
-      let r =0;
-      switch(this.period){
-        case "M1":{this.timeRange=60;r=0;}break;
-        case "M5":{this.timeRange=5*60;r=1;}break;
-        case "M15":{this.timeRange=15*60;r=2;}break;
-        case "M30":{this.timeRange=30*60;r=3;}break;
-        case "H1":{this.timeRange=60*60;r=4;}break;
-        case "H4":{this.timeRange=4*60*60;r=5;}break;
-        case "D1":{this.timeRange=24*60*60;r=6;}break;
-        case "W1":{this.timeRange=7*24*60*60;r=7;}break;
-        case "MN":{this.timeRange=30*24*60*60;r=8;}break;
-      }
-      return r;
-    },
     chartSeries(){
       return this.chart&&this.chart.get("aapl");
     },
@@ -127,9 +115,36 @@ let VChart = {
     }
   },
   methods:{
+    clickZoom(type){
+      if(type==0){
+        this.zoomChart++;
+        if(this.zoomChart>5){
+          this.zoomChart=5;
+          return;
+        }
+      }else{
+        this.zoomChart--;
+        if(this.zoomChart<0){
+          this.zoomChart=0;
+          return;
+        }
+      }
+      this.chart.rangeSelector.clickButton(this.zoomChart);
+    },
     changeLineCycle(p){
+      switch(p){
+        case "M1":{this.timeRange=60;}break;
+        case "M5":{this.timeRange=5*60;}break;
+        case "M15":{this.timeRange=15*60;}break;
+        case "M30":{this.timeRange=30*60;}break;
+        case "H1":{this.timeRange=60*60;}break;
+        case "H4":{this.timeRange=4*60*60;}break;
+        case "D1":{this.timeRange=24*60*60;}break;
+        case "W1":{this.timeRange=7*24*60*60;}break;
+        case "MN":{this.timeRange=30*24*60*60;}break;
+      }
       this.fetchChartHistory(p,false)
-      this.chart.rangeSelector.clickButton(this.rangeSelect);
+      this.chart.rangeSelector.clickButton(this.zoomChart);
     },
     clickAutoToNews(){
       this.isAutoToNews = !this.isAutoToNews;
@@ -404,13 +419,14 @@ let VChart = {
           }
         },
         chart:{
+          backgroundcolor:"gray",
           zoomType:"xy",
           spacingBottom:5,
           zoomType:null,
           events:{
             load: function(){
-              // console.log("===load")
-              this.rangeSelector.clickButton(that.rangeSelect);
+              // console.log("===load"+that.zoomChart)
+              this.rangeSelector.clickButton(that.zoomChart);
 
               // var min = 1000,
               //     max = 0,
@@ -521,15 +537,70 @@ let VChart = {
             display:'none',
           },
           buttons:[
-            {type:"hour",count:2,text:"2h"},
-            {type:"hour",count:10,text:"10h"},
-            {type:"day",count:1,text:"1d"},
-            {type:"day",count:2,text:"2d"},
-            {type:"week",count:1,text:"1w"},
-            {type:"month",count:1,text:"1m"},
-            {type:"month",count:5,text:"5m"},
-            {type:"year",count:2,text:"2y"},
-            {type:"year",count:8,text:"8y"},
+            // M1
+            // {type:"minute",count:30,text:"30m"},
+            // {type:"hour",count:2,text:"2h"},
+            // {type:"hour",count:3,text:"3h"},
+            // {type:"hour",count:4,text:"4h"},
+            // {type:"hour",count:6,text:"6h"},
+
+            // M5
+            // {type:"hour",count:6,text:"6h"},
+            // {type:"hour",count:10,text:"10h"},
+            // {type:"hour",count:15,text:"15h"},
+            // {type:"hour",count:20,text:"20h"},
+            // {type:"day",count:1,text:"1d"},
+
+            // M15
+            // {type:"hour",count:10,text:"10h"},
+            // {type:"day",count:1,text:"1d"},
+            // {type:"day",count:2,text:"2d"},
+            // {type:"day",count:3,text:"3d"},
+            // {type:"day",count:5,text:"5d"},
+
+            // M30
+            // {type:"day",count:2,text:"2d"},
+            // {type:"day",count:3,text:"3d"},
+            // {type:"day",count:6,text:"6d"},
+            // {type:"day",count:8,text:"8d"},
+            // {type:"day",count:10,text:"10d"},
+
+            // H1
+            // {type:"day",count:3,text:"3d"},
+            // {type:"week",count:1,text:"1w"},
+            // {type:"day",count:10,text:"10d"},
+            // {type:"week",count:2,text:"2w"},
+            // {type:"week",count:3,text:"3w"},
+
+            // H4
+            // {type:"week",count:2,text:"2w"},
+            // {type:"month",count:1,text:"1m"},
+            // {type:"week",count:6,text:"6w"},
+            // {type:"month",count:2,text:"2m"},
+            // {type:"month",count:3,text:"3m"},
+
+            //D1
+            // {type:"month",count:3,text:"3m"},
+            // {type:"month",count:5,text:"5m"},
+            // {type:"month",count:9,text:"9m"},
+            // {type:"month",count:12,text:"12m"},
+            // {type:"month",count:16,text:"16m"},
+
+            // W1
+            // {type:"year",count:1,text:"1y"},
+            // {type:"year",count:2,text:"2y"},
+            // {type:"year",count:3,text:"3y"},
+            // {type:"year",count:5,text:"5y"},
+            // {type:"year",count:7,text:"7y"},
+
+            // WN
+            {type:"year",count:6,text:"6y"},
+            {type:"year",count:9,text:"12y"},
+            {type:"year",count:14,text:"14y"},
+            {type:"year",count:16,text:"16y"},
+            {type:"year",count:18,text:"18y"},
+
+            {type:"all"},
           ]
         },
         xAxis: [
