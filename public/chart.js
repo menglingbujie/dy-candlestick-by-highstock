@@ -56,7 +56,7 @@ let VChart = {
     <div class="chart">
       <strong class='title'>{{this.productName}}</strong>
       <ul class="btns_history">
-        <li class="item" :class="{'current':(p==period)}" v-for="p in periods" @click.stop="fetchChartHistory(p,false)">{{p}}</li>
+        <li class="item" :class="{'active':(p==period)}" v-for="p in periods" @click.stop="changeLineCycle(p,false)">{{p}}</li>
       </ul>
       <ul class="btns_history">
         <li class="item" :class="{'active':isShowMALine}" @click.stop="showMALine">MA</li>
@@ -127,6 +127,10 @@ let VChart = {
     }
   },
   methods:{
+    changeLineCycle(p){
+      this.fetchChartHistory(p,false)
+      this.chart.rangeSelector.clickButton(this.rangeSelect);
+    },
     clickAutoToNews(){
       this.isAutoToNews = !this.isAutoToNews;
     },
