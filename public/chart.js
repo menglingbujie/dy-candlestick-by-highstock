@@ -1,6 +1,25 @@
 
 // let Highcharts = require("highchart");
 // import Highcharts from "highchart";
+let originalDrawPoints = Highcharts.seriesTypes.column.prototype.drawPoints;
+let originalDrawMACDPoints = Highcharts.seriesTypes.macd.prototype.drawPoints;
+Highcharts.seriesTypes.macd.prototype.drawPoints = function(){
+  let points = this.points,i=points.length;
+  while(i--){
+    var color = points[i].y>0 ? '#5ac71e' : '#f23244';
+    points[i].color = color;
+  }
+  originalDrawMACDPoints.call(this);
+}
+Highcharts.seriesTypes.column.prototype.drawPoints = function(){
+  let merge = Highcharts.merge,series=this,chart = this.chart,points=series.points,i=points.length,candleSeries=chart.get("aapl");
+  while(i--){
+    let candlePoint = candleSeries.points[i];
+    var color = (candlePoint.open < candlePoint.close) ? '#5ac71e' : '#f23244';
+    points[i].color = color;
+  }
+  originalDrawPoints.call(this);
+}
 function render(chart, point, text,ishigh) {
     let obj=null;
     if(ishigh){
@@ -392,6 +411,7 @@ let VChart = {
         if(this.isForceUpdateChart){ // 以下会触发这里：重复点击m1,切换产品,historyData超载
           this.initChart();
           this.showMACD(); // 默認显示macd
+          // this.showVolumn();
           // this.chart.rangeSelector.clickButton(this.rangeSelect);
         }else{
           // 如果有chart对象就update否则就初始化chart表
@@ -954,7 +974,10 @@ let VChart = {
             tooltip:{
               headerFormat:'',
               pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
-            }
+            },
+            dataGrouping:{
+              enabled:false,
+            },
           }
         ]
       }
