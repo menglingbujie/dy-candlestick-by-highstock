@@ -23,6 +23,8 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
+      RANGE_LEVEL:5,
+      candleSize:6,
       zoomButtons:[
         {type:"minute",count:30,text:"30m"},
         {type:"hour",count:2,text:"2h"},
@@ -126,9 +128,14 @@ let VChart = {
     clickZoom(type){
       if(type==0){
         this.zoomChart++;
-        if(this.zoomChart>5){
-          this.zoomChart=5;
+        if(this.zoomChart>this.RANGE_LEVEL){
+          this.zoomChart=this.RANGE_LEVEL;
           return;
+        }
+        if(this.zoomChart==1){
+          this.candleSize-=this.RANGE_LEVEL+2+this.zoomChart;
+        }else{
+          this.candleSize-=(this.RANGE_LEVEL-this.zoomChart);
         }
       }else{
         this.zoomChart--;
@@ -136,15 +143,21 @@ let VChart = {
           this.zoomChart=0;
           return;
         }
+        if(this.zoomChart==0){
+          this.candleSize+=this.RANGE_LEVEL+3-this.zoomChart;
+        }else{
+          this.candleSize+=this.RANGE_LEVEL-1-this.zoomChart;
+        }
       }
       this.chart.rangeSelector.clickButton(this.zoomChart);
+      this.chartSeries.update({"pointWidth":this.candleSize});
     },
     changeLineCycle(p){
-      // console.log(p,"====",this.period)
       if(p==this.period){
         return;
       }
-      this.zoomChart = 1;
+      this.zoomChart = 1; // 重置缩放比例
+      this.candleSize=6;// 重置蜡烛大小
       switch(p){
         case "M1":{
           this.timeRange=60;
@@ -161,7 +174,7 @@ let VChart = {
         case "M5":{
           this.timeRange=5*60;
           this.zoomButtons=[
-            {type:"hour",count:6,text:"6h"},
+            {type:"hour",count:5,text:"5h"},
             {type:"hour",count:10,text:"10h"},
             {type:"hour",count:15,text:"15h"},
             {type:"hour",count:20,text:"20h"},
@@ -183,7 +196,7 @@ let VChart = {
         case "M30":{
           this.timeRange=30*60;
           this.zoomButtons=[
-            {type:"day",count:2,text:"2d"},
+            {type:"day",count:1,text:"1d"},
             {type:"day",count:3,text:"3d"},
             {type:"day",count:6,text:"6d"},
             {type:"day",count:8,text:"8d"},
@@ -216,11 +229,11 @@ let VChart = {
         case "D1":{
           this.timeRange=24*60*60;
           this.zoomButtons=[
-            {type:"month",count:3,text:"3m"},
-            {type:"month",count:6,text:"6m"},
-            {type:"month",count:9,text:"9m"},
-            {type:"month",count:12,text:"12m"},
-            {type:"month",count:16,text:"16m"},
+            {type:"month",count:2,text:"2m"},
+            {type:"month",count:4,text:"4m"},
+            {type:"month",count:7,text:"7m"},
+            {type:"month",count:10,text:"10m"},
+            {type:"month",count:14,text:"14m"},
             {type:"all"},
           ]
         }break;
@@ -238,7 +251,7 @@ let VChart = {
         case "MN":{
           this.timeRange=30*24*60*60;
           this.zoomButtons=[
-            {type:"year",count:6,text:"6y"},
+            {type:"year",count:5,text:"5y"},
             {type:"year",count:9,text:"12y"},
             {type:"year",count:14,text:"14y"},
             {type:"year",count:16,text:"16y"},
@@ -567,7 +580,7 @@ let VChart = {
             lineColor:"#f23244",
             color:"#f23244",
             yAxis:0,
-            pointWidth:6, // 蜡烛宽度
+            pointWidth:this.candleSize, // 蜡烛宽度
             dataGrouping:{
               enabled:false,
             },
