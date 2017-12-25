@@ -23,6 +23,14 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
+      zoomButtons:[
+        {type:"minute",count:30,text:"30m"},
+        {type:"hour",count:2,text:"2h"},
+        {type:"hour",count:3,text:"3h"},
+        {type:"hour",count:4,text:"4h"},
+        {type:"hour",count:6,text:"6h"},
+        {type:"all"},
+      ],
       zoomChart:1,
       MAX_POINT:500,
       isAutoToNews: true,
@@ -40,7 +48,7 @@ let VChart = {
       productName:"EURUSD",
       // productName:"USDJPY",
       currentTime:0,
-      timeRange:30*24*60*60,
+      timeRange:60,
       currentPrice:0,
       maxRange:0,
       minRange:0,
@@ -49,7 +57,7 @@ let VChart = {
       chart:null,
       historyData:[],
       volumnData:[], // 交易量数据
-      period:"MN",
+      period:"M1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
   },
@@ -132,19 +140,114 @@ let VChart = {
       this.chart.rangeSelector.clickButton(this.zoomChart);
     },
     changeLineCycle(p){
-      switch(p){
-        case "M1":{this.timeRange=60;}break;
-        case "M5":{this.timeRange=5*60;}break;
-        case "M15":{this.timeRange=15*60;}break;
-        case "M30":{this.timeRange=30*60;}break;
-        case "H1":{this.timeRange=60*60;}break;
-        case "H4":{this.timeRange=4*60*60;}break;
-        case "D1":{this.timeRange=24*60*60;}break;
-        case "W1":{this.timeRange=7*24*60*60;}break;
-        case "MN":{this.timeRange=30*24*60*60;}break;
+      // console.log(p,"====",this.period)
+      if(p==this.period){
+        return;
       }
-      this.fetchChartHistory(p,false)
-      this.chart.rangeSelector.clickButton(this.zoomChart);
+      this.zoomChart = 1;
+      switch(p){
+        case "M1":{
+          this.timeRange=60;
+          // M1
+          this.zoomButtons = [
+            {type:"minute",count:30,text:"30m"},
+            {type:"hour",count:2,text:"2h"},
+            {type:"hour",count:3,text:"3h"},
+            {type:"hour",count:4,text:"4h"},
+            {type:"hour",count:6,text:"6h"},
+            {type:"all"},
+          ];
+        }break;
+        case "M5":{
+          this.timeRange=5*60;
+          this.zoomButtons=[
+            {type:"hour",count:6,text:"6h"},
+            {type:"hour",count:10,text:"10h"},
+            {type:"hour",count:15,text:"15h"},
+            {type:"hour",count:20,text:"20h"},
+            {type:"day",count:1,text:"1d"},
+            {type:"all"},
+          ]
+        }break;
+        case "M15":{
+          this.timeRange=15*60;
+          this.zoomButtons=[
+            {type:"hour",count:10,text:"10h"},
+            {type:"day",count:1,text:"1d"},
+            {type:"day",count:2,text:"2d"},
+            {type:"day",count:3,text:"3d"},
+            {type:"day",count:5,text:"5d"},
+            {type:"all"},
+          ]
+        }break;
+        case "M30":{
+          this.timeRange=30*60;
+          this.zoomButtons=[
+            {type:"day",count:2,text:"2d"},
+            {type:"day",count:3,text:"3d"},
+            {type:"day",count:6,text:"6d"},
+            {type:"day",count:8,text:"8d"},
+            {type:"day",count:10,text:"10d"},
+            {type:"all"},
+          ]
+        }break;
+        case "H1":{
+          this.timeRange=60*60;
+          this.zoomButtons=[
+            {type:"day",count:3,text:"3d"},
+            {type:"week",count:1,text:"1w"},
+            {type:"day",count:10,text:"10d"},
+            {type:"week",count:2,text:"2w"},
+            {type:"week",count:3,text:"3w"},
+            {type:"all"},
+          ]
+        }break;
+        case "H4":{
+          this.timeRange=4*60*60;
+          this.zoomButtons=[
+            {type:"week",count:2,text:"2w"},
+            {type:"month",count:1,text:"1m"},
+            {type:"week",count:6,text:"6w"},
+            {type:"month",count:2,text:"2m"},
+            {type:"month",count:3,text:"3m"},
+            {type:"all"},
+          ]
+        }break;
+        case "D1":{
+          this.timeRange=24*60*60;
+          this.zoomButtons=[
+            {type:"month",count:3,text:"3m"},
+            {type:"month",count:6,text:"6m"},
+            {type:"month",count:9,text:"9m"},
+            {type:"month",count:12,text:"12m"},
+            {type:"month",count:16,text:"16m"},
+            {type:"all"},
+          ]
+        }break;
+        case "W1":{
+          this.timeRange=7*24*60*60;
+          this.zoomButtons=[
+            {type:"year",count:1,text:"1y"},
+            {type:"year",count:2,text:"2y"},
+            {type:"year",count:3,text:"3y"},
+            {type:"year",count:5,text:"5y"},
+            {type:"year",count:7,text:"7y"},
+            {type:"all"},
+          ]
+        }break;
+        case "MN":{
+          this.timeRange=30*24*60*60;
+          this.zoomButtons=[
+            {type:"year",count:6,text:"6y"},
+            {type:"year",count:9,text:"12y"},
+            {type:"year",count:14,text:"14y"},
+            {type:"year",count:16,text:"16y"},
+            {type:"year",count:18,text:"18y"},
+            {type:"all"},
+          ]
+        }break;
+      }
+      this.fetchChartHistory(p,true);
     },
     clickAutoToNews(){
       this.isAutoToNews = !this.isAutoToNews;
@@ -524,7 +627,7 @@ let VChart = {
         },
         rangeSelector: {
           enabled: true,
-          selected:0,
+          selected:this.zoomChart,
           inputEnabled:false,
           labelStyle:{
             display:"none",
@@ -536,72 +639,7 @@ let VChart = {
           buttonTheme:{
             display:'none',
           },
-          buttons:[
-            // M1
-            // {type:"minute",count:30,text:"30m"},
-            // {type:"hour",count:2,text:"2h"},
-            // {type:"hour",count:3,text:"3h"},
-            // {type:"hour",count:4,text:"4h"},
-            // {type:"hour",count:6,text:"6h"},
-
-            // M5
-            // {type:"hour",count:6,text:"6h"},
-            // {type:"hour",count:10,text:"10h"},
-            // {type:"hour",count:15,text:"15h"},
-            // {type:"hour",count:20,text:"20h"},
-            // {type:"day",count:1,text:"1d"},
-
-            // M15
-            // {type:"hour",count:10,text:"10h"},
-            // {type:"day",count:1,text:"1d"},
-            // {type:"day",count:2,text:"2d"},
-            // {type:"day",count:3,text:"3d"},
-            // {type:"day",count:5,text:"5d"},
-
-            // M30
-            // {type:"day",count:2,text:"2d"},
-            // {type:"day",count:3,text:"3d"},
-            // {type:"day",count:6,text:"6d"},
-            // {type:"day",count:8,text:"8d"},
-            // {type:"day",count:10,text:"10d"},
-
-            // H1
-            // {type:"day",count:3,text:"3d"},
-            // {type:"week",count:1,text:"1w"},
-            // {type:"day",count:10,text:"10d"},
-            // {type:"week",count:2,text:"2w"},
-            // {type:"week",count:3,text:"3w"},
-
-            // H4
-            // {type:"week",count:2,text:"2w"},
-            // {type:"month",count:1,text:"1m"},
-            // {type:"week",count:6,text:"6w"},
-            // {type:"month",count:2,text:"2m"},
-            // {type:"month",count:3,text:"3m"},
-
-            //D1
-            // {type:"month",count:3,text:"3m"},
-            // {type:"month",count:5,text:"5m"},
-            // {type:"month",count:9,text:"9m"},
-            // {type:"month",count:12,text:"12m"},
-            // {type:"month",count:16,text:"16m"},
-
-            // W1
-            // {type:"year",count:1,text:"1y"},
-            // {type:"year",count:2,text:"2y"},
-            // {type:"year",count:3,text:"3y"},
-            // {type:"year",count:5,text:"5y"},
-            // {type:"year",count:7,text:"7y"},
-
-            // WN
-            {type:"year",count:6,text:"6y"},
-            {type:"year",count:9,text:"12y"},
-            {type:"year",count:14,text:"14y"},
-            {type:"year",count:16,text:"16y"},
-            {type:"year",count:18,text:"18y"},
-
-            {type:"all"},
-          ]
+          buttons:this.zoomButtons,
         },
         xAxis: [
           {
