@@ -17,6 +17,7 @@ Highcharts.seriesTypes.column.prototype.drawPoints = function(){
     let candlePoint = candleSeries.points[i];
     var color = (candlePoint.open < candlePoint.close) ? '#5ac71e' : '#f23244';
     points[i].color = color;
+    points[i].shapeArgs.width=candlePoint.shapeArgs.width;
   }
   originalDrawPoints.call(this);
 }
@@ -42,7 +43,9 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
-      RANGE_LEVEL:5,
+      remarkCandlePoint:[],
+      remarkVolumnPoint:[],
+      RANGE_LEVEL:4,
       candleSize:6,
       zoomButtons:[
         {type:"minute",count:30,text:"30m"},
@@ -50,7 +53,7 @@ let VChart = {
         {type:"hour",count:3,text:"3h"},
         {type:"hour",count:4,text:"4h"},
         {type:"hour",count:6,text:"6h"},
-        {type:"all"},
+        // {type:"all"},
       ],
       zoomChart:1,
       MAX_POINT:500,
@@ -187,7 +190,7 @@ let VChart = {
             {type:"hour",count:3,text:"3h"},
             {type:"hour",count:4,text:"4h"},
             {type:"hour",count:6,text:"6h"},
-            {type:"all"},
+            // {type:"all"},
           ];
         }break;
         case "M5":{
@@ -198,29 +201,29 @@ let VChart = {
             {type:"hour",count:15,text:"15h"},
             {type:"hour",count:20,text:"20h"},
             {type:"day",count:1,text:"1d"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
         case "M15":{
           this.timeRange=15*60;
           this.zoomButtons=[
-            {type:"hour",count:10,text:"10h"},
-            {type:"day",count:1,text:"1d"},
             {type:"day",count:2,text:"2d"},
-            {type:"day",count:3,text:"3d"},
+            {type:"day",count:4,text:"4d"},
             {type:"day",count:5,text:"5d"},
-            {type:"all"},
+            {type:"day",count:7,text:"7d"},
+            {type:"day",count:9,text:"9d"},
+            // {type:"all"},
           ]
         }break;
         case "M30":{
           this.timeRange=30*60;
           this.zoomButtons=[
-            {type:"day",count:1,text:"1d"},
-            {type:"day",count:3,text:"3d"},
+            {type:"day",count:4,text:"4d"},
             {type:"day",count:6,text:"6d"},
             {type:"day",count:8,text:"8d"},
             {type:"day",count:10,text:"10d"},
-            {type:"all"},
+            {type:"day",count:11,text:"11d"},
+            // {type:"all"},
           ]
         }break;
         case "H1":{
@@ -231,7 +234,7 @@ let VChart = {
             {type:"day",count:10,text:"10d"},
             {type:"week",count:2,text:"2w"},
             {type:"week",count:3,text:"3w"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
         case "H4":{
@@ -242,7 +245,7 @@ let VChart = {
             {type:"week",count:6,text:"6w"},
             {type:"month",count:2,text:"2m"},
             {type:"month",count:3,text:"3m"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
         case "D1":{
@@ -253,7 +256,7 @@ let VChart = {
             {type:"month",count:7,text:"7m"},
             {type:"month",count:10,text:"10m"},
             {type:"month",count:14,text:"14m"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
         case "W1":{
@@ -264,7 +267,7 @@ let VChart = {
             {type:"year",count:3,text:"3y"},
             {type:"year",count:5,text:"5y"},
             {type:"year",count:7,text:"7y"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
         case "MN":{
@@ -275,7 +278,7 @@ let VChart = {
             {type:"year",count:14,text:"14y"},
             {type:"year",count:16,text:"16y"},
             {type:"year",count:18,text:"18y"},
-            {type:"all"},
+            // {type:"all"},
           ]
         }break;
       }
@@ -287,7 +290,10 @@ let VChart = {
     prevPage(){
     },
     gotoNewestExtreme(){
-      this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
+      let xAxis = this.chart.xAxis[0];
+      let extremes = xAxis.getExtremes();
+      if(extremes.userMax==this.newestRange[1]&&extremes.userMin==this.newestRange[0]){return;}
+      xAxis.setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
     },
     displayProduct(k){
       return k&&this.i18n('trade.'+k.replace(/\.pro$/,''))||"";
@@ -372,9 +378,6 @@ let VChart = {
 
       this.chartSeriesVolumn.show();
     },
-    gotoNewestExtreme(){
-      this.chart.xAxis[0].setExtremes(this.newestRange[0],this.newestRange[1],true,false); // 有socket更新就设置到最新极限区间
-    },
     fetchChartHistory(period,isfocueupdate){
       if(isfocueupdate){
         this.isForceUpdateChart = true;
@@ -410,8 +413,8 @@ let VChart = {
         this.minRange = _lastData[3];
         if(this.isForceUpdateChart){ // 以下会触发这里：重复点击m1,切换产品,historyData超载
           this.initChart();
-          this.showMACD(); // 默認显示macd
-          // this.showVolumn();
+          // this.showMACD(); // 默認显示macd
+          this.showVolumn();
           // this.chart.rangeSelector.clickButton(this.rangeSelect);
         }else{
           // 如果有chart对象就update否则就初始化chart表
@@ -430,6 +433,9 @@ let VChart = {
         this.isForceUpdateChart = false;
         this.inProgress=false;
       });
+    },
+    resetHistroyData(){
+      console.log(this.remarkVolumnPoint,"==resetHistroyData==",this.remarkCandlePoint);
     },
     addNewCandleTick(d){
       // console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
@@ -713,7 +719,7 @@ let VChart = {
               minute: '%H:%M',
               hour: '%H:%M',
               day: '%b-%e',
-              week: '%b-%e-%Y',
+              week: '%e-%Y',
               month: '%Y-%b',
               year: '%Y-%b'
             },
