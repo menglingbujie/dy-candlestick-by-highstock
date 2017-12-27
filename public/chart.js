@@ -43,8 +43,8 @@ function render(chart, point, text,ishigh) {
 let VChart = {
   data(){
     return {
-      remarkCandlePoint:[],
-      remarkVolumnPoint:[],
+      recordCandlePoint:[],
+      recordVolumnPoint:[],
       RANGE_LEVEL:4,
       candleSize:6,
       zoomButtons:[
@@ -87,6 +87,7 @@ let VChart = {
   },
   template:`
     <div class="chart">
+      <h3>{{moment.unix(currentTime).utc().format('YYYY-MM-DD HH:mm:ss')}}</h3>
       <strong class='title'>{{this.productName}}</strong>
       <ul class="btns_history">
         <li class="item" :class="{'active':(p==period)}" v-for="p in periods" @click.stop="changeLineCycle(p,false)">{{p}}</li>
@@ -157,7 +158,7 @@ let VChart = {
         if(this.zoomChart==1){
           this.candleSize-=this.RANGE_LEVEL+2+this.zoomChart;
         }else{
-          this.candleSize-=(this.RANGE_LEVEL-this.zoomChart);
+          this.candleSize-=(this.RANGE_LEVEL+1-this.zoomChart);
         }
       }else{
         this.zoomChart--;
@@ -168,7 +169,7 @@ let VChart = {
         if(this.zoomChart==0){
           this.candleSize+=this.RANGE_LEVEL+3-this.zoomChart;
         }else{
-          this.candleSize+=this.RANGE_LEVEL-1-this.zoomChart;
+          this.candleSize+=this.RANGE_LEVEL-this.zoomChart;
         }
       }
       this.chart.rangeSelector.clickButton(this.zoomChart);
@@ -304,9 +305,18 @@ let VChart = {
     updateChartSeries(){
       this.chartSeries.setData(this.historyData);
 
-      // 每次更新完数据重新计算极限值
+      // 每次更新完数据重新计算极限值(min和max是相对的，只有在最新区域内时才正确)
       let extrem = this.chart.xAxis[0].getExtremes();
-      this.newestRange = [extrem.min,extrem.max];
+      if(extrem.max<this.newestRange[1]){
+        // 不在最新区间下的区间更新公式如下
+        // 新点区间范围 = 标记点数*时间间隔
+        let _times = this.recordCandlePoint.length*this.timeRange*1000;
+        console.log(this.newestRange,"=t==="+_times)
+        this.newestRange[0] += _times;
+        this.newestRange[1] += _times;
+      }else{
+        this.newestRange = [extrem.min,extrem.max];
+      }
 
       if(this.isShowMALine){
         this.chartMA5Series.update({linkedTo:"aapl"});
@@ -407,15 +417,15 @@ let VChart = {
         if(!_lastData){
           return;
         }
-	      this.openTime = Math.floor(_lastData[0]/1000);// 当前开盘时间
+        this.openTime = _.floor(_lastData[0]/1000);// 当前开盘时间
         this.openPrice = _lastData[1];//初始化最近一次的卖出价为新点的开盘价
         this.maxRange = _lastData[2];
         this.minRange = _lastData[3];
+        this.volumnCount = _.last(this.volumnData)[1]; // 最新点的交易量初始化
+
         if(this.isForceUpdateChart){ // 以下会触发这里：重复点击m1,切换产品,historyData超载
           this.initChart();
-          // this.showMACD(); // 默認显示macd
-          this.showVolumn();
-          // this.chart.rangeSelector.clickButton(this.rangeSelect);
+          this.showMACD(); // 默認显示macd
         }else{
           // 如果有chart对象就update否则就初始化chart表
           if(!this.chart){
@@ -439,7 +449,9 @@ let VChart = {
     },
     addNewCandleTick(d){
       // console.log(d,"===add point=="+this.openTime+"==="+(this.openTime-d.t))
+
       this.openTime+=this.timeRange;
+
       let newData = [this.openTime*1000,d.a,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
       let volumnData = [this.openTime*1000,this.volumnCount];
 
@@ -472,8 +484,6 @@ let VChart = {
       this.maxRange = _.max([d.b,this.maxRange]);
       this.minRange = _.min([d.b,this.minRange]);
       let lastPoint = _.last(this.chartSeries.points);
-      // console.log(lastPoint.x+"===update==="+(this.openTime+this.timeRange-d.t)+"=="+this.timeRange)
-      // let newData = [d.t*1000,this.openPrice,this.maxRange,this.minRange,d.b];
       let newData = [lastPoint.x,this.openPrice,this.maxRange,this.minRange,d.b];
       // console.log(d,"===updated====",newData);
       this.currentPrice = d.b;
@@ -488,9 +498,50 @@ let VChart = {
       }
       yAxis.update(yAxis.options);
     },
+    recordUpdatePoint(d){
+      if(!this.chartSeries){
+        return;
+      }
+      this.volumnCount++; //每一次报价，交易量+1统计
 
+      this.currentTime=d.t;
+      // console.log("=re==update==="+(this.openTime+this.timeRange-d.t));
+      if(this.openTime+this.timeRange-d.t<1){
+        this.openTime+=this.timeRange;
+        let newData = [this.openTime*1000,this.openPrice,this.maxRange,this.minRange,d.b];// 只关注最后一次的收盘价
+        let volumnData = [this.openTime*1000,this.volumnCount];
+        this.recordCandlePoint.push(newData);
+        this.recordVolumnPoint.push(volumnData);
+
+        console.log(this.recordCandlePoint,"=record==",this.recordVolumnPoint)
+
+        this.openPrice = d.b;
+        this.maxRange = d.b;
+        this.minRange = d.b;
+        this.volumnCount = 0; // 交易量重置
+        return;
+      }
+      this.maxRange = _.max([d.b,this.maxRange]);
+      this.minRange = _.min([d.b,this.minRange]);
+      this.currentPrice = d.b;
+    },
+    restoreUpdatePoint(){
+      if(_.isEmpty(this.recordCandlePoint)||_.isEmpty(this.recordVolumnPoint)){
+        return;
+      }
+      // console.log(this.recordCandlePoint.length,"==restore up 11=",this.historyData.length)
+      // 历史数据加入新点
+      this.historyData = _.concat(this.historyData,this.recordCandlePoint);
+      this.volumnData = _.concat(this.volumnData,this.recordVolumnPoint);
+      // console.log(this.recordCandlePoint.length,"==restore up 22=",this.historyData.length)
+      // 更新图表数据
+      this.updateChartSeries();
+
+      this.recordCandlePoint = []; // 记录点重置
+      this.recordVolumnPoint = [];
+    },
     initSocket(){
-      this.socket = io("//dev.io.ubankfx.com",{
+      this.socket = io("//io.ubankfx.com",{
         transports:['websocket'],
         path:'/socket.io/'
       });
@@ -518,11 +569,21 @@ let VChart = {
         let d = JSON.parse(data);
         if(d.s!=this.productName)return;
 
+        // 在最新位置，无论是否自动最新都更新图表
         if(this.isUpdating){
           this.updatePoint(d);
         }else{
+          // 如果不是在最新位置，则需要判断是否设置了
+          // 自动最新来判断是否跳转到最新点的更新
           if(this.isAutoToNews){
+            // 更新之前需要判断是否有记录点
+            // 如果有则更新historyData把点加进来
+            this.restoreUpdatePoint();
             this.gotoNewestExtreme();
+          }else{
+            // 如果不是在最新，也不需要跳转到最新则用户可以自由滑动查看历史
+            // 但是此时需要记录是否有新点加入
+            this.recordUpdatePoint(d);
           }
         }
       });
@@ -594,10 +655,12 @@ let VChart = {
           xAxis:{
             minPadding: 0,
             maxPadding:0,
+            endOnTick:false,
           },
           yAxis:{
             minPadding: 0,
             maxPadding:0,
+            endOnTick:false,
           },
           //修改蜡烛颜色
           candlestick: {
@@ -687,6 +750,7 @@ let VChart = {
               afterSetExtremes:function(e){
                 const DEVIATION=60000; // 2分钟误差，毫秒单位
                 let currMax = _.floor(e.max),currMin = _.floor(e.min),dataMax = e.dataMax,dataMin = e.dataMin;
+                console.log(currMax+"=afse==="+dataMax)
                 if(currMax==dataMax){
                   that.newestRange = [currMin,currMax]; // 更新最新极限范围
                   //启动更新
