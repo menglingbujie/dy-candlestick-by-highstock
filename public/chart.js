@@ -48,11 +48,11 @@ let VChart = {
       RANGE_LEVEL:4,
       candleSize:6,
       zoomButtons:[
-        {type:"minute",count:30,text:"30m"},
-        {type:"hour",count:2,text:"2h"},
-        {type:"hour",count:3,text:"3h"},
-        {type:"hour",count:4,text:"4h"},
-        {type:"hour",count:6,text:"6h"},
+        {type:"day",count:3,text:"3d"},
+        {type:"week",count:1,text:"1w"},
+        {type:"day",count:10,text:"10d"},
+        {type:"week",count:2,text:"2w"},
+        {type:"week",count:3,text:"3w"},
         // {type:"all"},
       ],
       zoomChart:1,
@@ -71,8 +71,9 @@ let VChart = {
       maset:[5,10,20],
       productName:"EURUSD",
       // productName:"USDJPY",
+      // productName:"XAUUSD",
       currentTime:0,
-      timeRange:60,
+      timeRange:60*60,
       currentPrice:0,
       maxRange:0,
       minRange:0,
@@ -81,7 +82,7 @@ let VChart = {
       chart:null,
       historyData:[],
       volumnData:[], // 交易量数据
-      period:"M1",
+      period:"H1",
       periods:['M1','M5','M15','M30','H1','H4','D1','W1','MN'],
     }
   },
@@ -490,13 +491,12 @@ let VChart = {
       let yAxis = this.chart.yAxis[0];
       yAxis.options.plotLines[0].value = this.currentPrice;
       yAxis.options.plotLines[0].label.text = this.currentPrice;
-
+      yAxis.update();
       lastPoint.update(newData,true,false);
       if(this.techType==2){
         let lastVolPoint = _.last(this.chartSeriesVolumn.points);
         lastVolPoint.update([lastVolPoint.x,this.volumnCount]);
       }
-      yAxis.update(yAxis.options);
     },
     recordUpdatePoint(d){
       if(!this.chartSeries){
@@ -652,16 +652,6 @@ let VChart = {
           }
         },
         plotOptions:{
-          xAxis:{
-            minPadding: 0,
-            maxPadding:0,
-            endOnTick:false,
-          },
-          yAxis:{
-            minPadding: 0,
-            maxPadding:0,
-            endOnTick:false,
-          },
           //修改蜡烛颜色
           candlestick: {
             upLineColor:"#5ac71e",
@@ -683,7 +673,6 @@ let VChart = {
           },
           //去掉曲线和蜡烛上的hover事件
           series: {
-            findNearestPointBy:"xy",
             pointPadding:0,
             groupPadding:0,
             marker:{enabled:false},
@@ -750,7 +739,7 @@ let VChart = {
               afterSetExtremes:function(e){
                 const DEVIATION=60000; // 2分钟误差，毫秒单位
                 let currMax = _.floor(e.max),currMin = _.floor(e.min),dataMax = e.dataMax,dataMin = e.dataMin;
-                console.log(currMax+"=afse==="+dataMax)
+                // console.log(currMax+"=afse==="+dataMax)
                 if(currMax==dataMax){
                   that.newestRange = [currMin,currMax]; // 更新最新极限范围
                   //启动更新
@@ -768,7 +757,18 @@ let VChart = {
                 }
               }
             },
-            crosshair: {
+            dateTimeLabelFormats:{
+              minute: '%H:%M',
+              hour: '%H:%M',
+              day: '%b-%e',
+              week: '%e-%Y',
+              month: '%Y-%b',
+              year: '%Y-%b'
+            },
+            minPadding: 0,
+            maxPadding:0,
+            endOnTick:false,
+            crosshair:{
               color:"#727A98",
               label: {
                 formatter: function (e) {
@@ -779,14 +779,6 @@ let VChart = {
               },
               zIndex:10,
             },
-            dateTimeLabelFormats:{
-              minute: '%H:%M',
-              hour: '%H:%M',
-              day: '%b-%e',
-              week: '%e-%Y',
-              month: '%Y-%b',
-              year: '%Y-%b'
-            },
             // labels:{
             //   formatter:function(){
             //     console.log("===",this.value)
@@ -795,43 +787,50 @@ let VChart = {
             // }
           }
         ],
-        yAxis: [
-          {
-            height:'80%',
-            showLastLabel: true, //是否显示最后一个轴标签
-            showFirstLabel:false,
-            gridLineDashStyle:"longdash",
-            gridLineWidth: 1,
-            offset:55,
-            labels:{
-              step: 1,
-              formatter: function(){
-                return this.value.toFixed(6);
-              }
-            },
-            plotLines: [
-              {
-                value: this.currentPrice.toFixed(6),
-                color: 'gray',
-                width: 1,
-                label:{
-                  useHTML:true,
-                  align:"right",
-                  style:{
-                    backgroundColor:"#000",
-                    color:"#fff",
-                    padding:"0 5px",
-                    fontSize:"12px",
-                  },
-                  text:this.currentPrice.toFixed(6),
-                  x:50,
-                  y:3,
+        yAxis: [{
+          height:'80%',
+          showLastLabel: true, //是否显示最后一个轴标签
+          showFirstLabel:false,
+          gridLineDashStyle:"longdash",
+          gridLineWidth: 1,
+          offset:55,
+          labels:{
+            step: 1,
+            formatter: function(){
+              return this.value.toFixed(6);
+            }
+          },
+          plotLines: [
+            {
+              value: this.currentPrice.toFixed(6),
+              color: 'gray',
+              width: 1,
+              id:"price",
+              label:{
+                useHTML:true,
+                align:"right",
+                style:{
+                  backgroundColor:"#000",
+                  color:"#fff",
+                  padding:"0 5px",
+                  fontSize:"12px",
                 },
-                zIndex:5,
-              }
-            ],
+                text:this.currentPrice.toFixed(6),
+                x:55,
+                y:3,
+              },
+              zIndex:5,
+            }
+          ],
 
-          crosshair: {
+          resize: {
+            enabled: true
+          },
+          minPadding: 0,
+          maxPadding:0,
+          endOnTick:false,
+          crosshair:{
+            snap:false,
             color:"#727A98",
             label: {
               enabled: true,
@@ -840,16 +839,15 @@ let VChart = {
                 return v.toFixed(6);
               }
             }
-          },
-          resize: {
-            enabled: true
-          },
+          }
         },
         {
           top:"80%",
           height:"20%",
-        }
-        ],
+          minPadding: 0,
+          maxPadding:0,
+          endOnTick:false,
+        }],
         series: [ {
             type: 'candlestick',
             id:"aapl",
@@ -946,9 +944,9 @@ let VChart = {
               }
             },
             bottomLine: {  // 下轨线
-                styles: {
-                    lineColor: '#58C6FF'
-                }
+              styles: {
+                lineColor: '#58C6FF'
+              }
             },
             color: '#FFAE58', //中轨颜色
             tooltip: {
@@ -1043,7 +1041,8 @@ let VChart = {
             color:"#7CB5EC",
             tooltip:{
               headerFormat:'',
-              pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
+              // pointFormat:'<span style="color:{point.color}">\u25CF</span><b> {series.name}</b>:{point.y}<br>',
+              pointFormat:"",
             },
             dataGrouping:{
               enabled:false,
